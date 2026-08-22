@@ -1,0 +1,179 @@
+# Model weights. Multi-gigabyte binaries GitHub rejects above 100 MB, and which
+# preflight already records by checkpoint hash and licence. Fetch them per
+# requirements-rtx3090.lock and the declarations in configs/models/*.yaml.
+#
+# Anchored to the repository root: an unanchored `models/` also matches
+# `configs/models/`, which holds the configuration files the whole comparison
+# depends on.
+/models/
+
+
+# Legacy run outputs from the classroom driver.
+/runs/
+
+# Test media and fixtures, generated on demand.
+/data/
+
+__pycache__/
+*.pyc
+
+# Run outputs and logs (see /artifacts/runs/ above).
+/artifacts/
+
+# Run outputs are excluded above, with one deliberate exception: the 1446
+# reference run is committed so the reports can be read against the artifacts
+# they cite. Only the reviewable part -- every JSON summary, comparison and
+# report, the rendered detection frames, the head overlays, and the per-row
+# JSONL small enough to diff.
+#
+# Excluded from it by the rules below: the 269 evidence contact sheets in
+# 11_gemma/ (350 MB of PNG built for a VLM stage that no longer exists) and
+# every file over 2 MB (raw_detections, merged_detections,
+# temporal_confirmation -- 582 MB of machine output regenerable with
+# `tools/reconfirm.py` from what is kept).
+!/artifacts/
+!/artifacts/runs/
+!/artifacts/runs/1446/
+!/artifacts/runs/1446/**
+/artifacts/runs/1446/**/11_gemma/**/*.png
+
+# Run 1501 -- the current reference run, committed for the same reason as 1446:
+# the reports cite file paths inside it. Excludes the alignment raw/compensated
+# frames (1.3 MB each, regenerable from the source) and the 11_gemma contact
+# sheets (a VLM stage that no longer exists).
+!/artifacts/runs/1501/
+!/artifacts/runs/1501/**
+/artifacts/runs/1501/**/11_gemma/**/*.png
+/artifacts/runs/1501/**/03_alignment/**/raw.png
+/artifacts/runs/1501/**/03_alignment/**/compensated.png
+/artifacts/runs/1501/**/03_alignment/**/reference.png
+# Added by code-review-graph
+.code-review-graph/
+
+# Runs 1503 (news clip) and 1504 (04_talking), committed on the same terms as
+# 1446 and 1501: the reviewable summaries, so the reports can be read against
+# the artifacts they cite. Excluded below are the annotated videos (19-79 MB of
+# regenerable MP4) and the per-sample JSONL over 2 MB, both of which
+# `tools/render_annotated_video.py` and `tools/attach_chit_detections.py`
+# reproduce from what is kept.
+!/artifacts/runs/1503/
+!/artifacts/runs/1503/**
+!/artifacts/runs/1504/
+!/artifacts/runs/1504/**
+/artifacts/runs/**/*.mp4
+/artifacts/runs/1503/**/samples*.jsonl
+/artifacts/runs/1504/**/samples*.jsonl
+/artifacts/runs/1503/**/03_alignment/**/*.png
+/artifacts/runs/1504/**/03_alignment/**/*.png
+
+# Scratch output from this session's investigations: contact sheets, zoom crops
+# and stdout captures. Regenerable and not evidence of anything on their own.
+/artifacts/*.out
+/artifacts/*.jpg
+/artifacts/chit_candidates/
+/artifacts/trk118/
+
+# Other assistants' project files and IDE state.
+.claude/
+.codebuddy/
+.cursor/
+.gemini/
+.kiro/
+.qoder/
+.qodo/
+.windsurfrules
+.cursorrules
+
+# Run 1505 (03.CCTV Mobile Usage), on the same terms as 1503/1504.
+!/artifacts/runs/1505/
+!/artifacts/runs/1505/**
+/artifacts/runs/1505/**/samples*.jsonl
+/artifacts/runs/1505/**/03_alignment/**/*.png
+
+# The built dashboard and its queue are committed: they are the product, and
+# the HTML is self-contained and diffable. Regenerate with
+# `tools/build_dashboard.py`.
+!/artifacts/dashboard.html
+!/artifacts/review_queue.json
+
+# Output contract v1.0.0 (docs/OUTPUT_CONTRACT.md).
+#
+# `evidence_records.jsonl` is one record per object proposal, rejections
+# included, and runs 2-41 MB per video -- the same reason `samples*.jsonl` is
+# ignored. Rebuild it with `tools/build_evidence_records.py --run <dir>`, which
+# refuses to write unless its recomputed gate reproduces the run's own counts.
+/artifacts/runs/**/evidence_records.jsonl
+
+# The fused outcomes and the funnel ARE committed. They are small, diffable,
+# and they are what the contract actually promises a reader.
+!/artifacts/runs/**/track_outcomes.json
+!/artifacts/runs/**/contract_summary.json
+
+# Reproducibility of the published contract metrics.
+#
+# `tools/build_evidence_records.py` needs exactly two of the per-run sample
+# files to rebuild a run: the raw proposals and the SAM 3 verdicts. Without
+# them a fresh checkout can read the committed summaries but cannot verify
+# them, which is the state 1503/1504/1505 were in -- only 1501 predated the
+# blanket `samples*.jsonl` rules and so was the only reproducible run.
+#
+# The other sample files (samples.jsonl, samples_chit_gated.jsonl,
+# samples_sam3_confirmed.jsonl) stay ignored: they are derivable from these two.
+!/artifacts/runs/**/samples_with_chits.jsonl
+!/artifacts/runs/**/samples_sam3_adjudicated.jsonl
+
+# Run 1506 (06.Candidate...phone - Trim), on the same terms as 1503/1504/1505.
+# The 677 annotated stage-14 frames are excluded: they are the input to the
+# rendered video, not a deliverable, and the video itself carries them.
+!/artifacts/runs/1506/
+!/artifacts/runs/1506/**
+/artifacts/runs/1506/**/annotated/**
+/artifacts/runs/1506/**/03_alignment/**/*.png
+/artifacts/runs/1506/**/samples.jsonl
+/artifacts/runs/1506/**/samples_chit_gated.jsonl
+
+# Rendered videos are never committed. 1506's is 164 MB, over GitHub's
+# per-file limit, and every one of them is regenerable from the samples file
+# with `tools/render_annotated_video.py`.
+/artifacts/runs/**/*.mp4
+
+# Re-assert after the 1506 whitelist above, which otherwise re-includes it.
+# (gitignore is last-match-wins, so a later `!` negation resurrects a file an
+# earlier rule excluded.) Rebuild with tools/build_evidence_records.py.
+/artifacts/runs/**/evidence_records.jsonl
+
+# Run 1507 (last 10s of the trimmed 06 video), same terms as 1503-1506.
+!/artifacts/runs/1507/
+!/artifacts/runs/1507/**
+/artifacts/runs/1507/**/annotated/**
+/artifacts/runs/1507/**/samples.jsonl
+/artifacts/runs/1507/**/samples_chit_gated.jsonl
+/artifacts/runs/1507/**/evidence_records.jsonl
+
+# Runs 1508 (12_paper) and 1509 (01_phone, 04_talking), same terms as 1503-1507.
+!/artifacts/runs/1508/
+!/artifacts/runs/1508/**
+!/artifacts/runs/1509/
+!/artifacts/runs/1509/**
+/artifacts/runs/150[89]/**/annotated/**
+/artifacts/runs/150[89]/**/samples.jsonl
+/artifacts/runs/150[89]/**/samples_chit_gated.jsonl
+/artifacts/runs/150[89]/**/evidence_records.jsonl
+
+# Re-assert LAST so no per-run whitelist above can resurrect these.
+# gitignore is last-match-wins, and this has now bitten twice: a later `!`
+# negation re-included a 32 MB records file, then an 82 MB rendered video.
+/artifacts/runs/**/*.mp4
+/artifacts/runs/**/evidence_records.jsonl
+
+# Runs 1510/1511, same terms as the rest.
+!/artifacts/runs/151[01]/
+!/artifacts/runs/151[01]/**
+/artifacts/runs/151[01]/**/annotated/**
+/artifacts/runs/151[01]/**/samples.jsonl
+/artifacts/runs/151[01]/**/samples_chit_gated.jsonl
+
+# Final re-assert. gitignore is last-match-wins and per-run whitelists above
+# have twice resurrected files an earlier rule excluded.
+/artifacts/runs/**/*.mp4
+/artifacts/runs/**/evidence_records.jsonl
