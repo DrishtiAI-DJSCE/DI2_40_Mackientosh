@@ -1,0 +1,125 @@
+.video {
+  display: grid;
+  grid-template-columns: 1fr 12rem;
+  gap: 1.1rem;
+  align-items: start;
+}
+
+@media (max-width: 56rem) {
+  .video {
+    grid-template-columns: 1fr;
+  }
+}
+
+.video__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.video__legend {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--slate-2);
+}
+
+.video__layers {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.video__layers button,
+.video__aside button {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 0.3em 0.55em;
+  cursor: pointer;
+  transition:
+    background var(--fast) var(--spring),
+    color var(--fast) var(--spring);
+}
+
+.video__layers button.is-on,
+.video__aside button.is-on {
+  color: var(--accent);
+  background: var(--accent-wash);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.video__layers button:active,
+.video__aside button:active {
+  transform: scale(0.97);
+}
+
+.video__loading,
+.video__error {
+  font-size: 0.75rem;
+  color: var(--slate);
+  margin: 0;
+}
+
+.video__error {
+  color: var(--s-review);
+}
+
+.video__focus {
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  background: var(--surface);
+  padding: 0.8rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.video__focus header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.video__focus header span {
+  font-size: 0.7rem;
+  color: var(--slate);
+  margin-left: auto;
+}
+
+.video__aside {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.video__aside ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.video__aside button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  text-align: left;
+}
