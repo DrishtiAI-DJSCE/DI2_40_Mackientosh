@@ -1,57 +1,15 @@
 import type { ProjectRef } from "./review";
 
 /**
- * The hall hierarchy: exam > centre > recording.
+ * Helpers over the tree the API returns.
  *
- * One recording is wired to real artifacts. The rest are declared and marked
- * `processed: false`, because the deployment shape has to be visible before
- * the runs exist -- and an unprocessed video must say so on its face rather
- * than showing an empty dashboard that reads like "nothing was found".
- *
- * Replace this with the D1 query once the control plane is up; the shape is
- * already what that query returns.
+ * There is deliberately no `PROJECTS` constant here any more. The hierarchy
+ * used to ship with a CET exam, a Dahisar centre and a Thane centre baked in.
+ * Those were placeholders that read as facts: a centre in the sidebar is a
+ * claim that the centre exists and has recordings, and nobody had said so.
+ * Every project, centre and recording is now created by the person using the
+ * console, and an empty console says it is empty.
  */
-export const PROJECTS: ProjectRef[] = [
-  {
-    id: "cet-2026",
-    name: "CET Exam 2026",
-    centres: [
-      {
-        id: "dahisar",
-        name: "Dahisar Centre",
-        videos: [
-          {
-            id: "1512_12_paper",
-            name: "Hall 3 · Seat 12 · paper handling",
-            bundle: "/data/1512_12_paper.json",
-            overlay: "/data/1512_12_paper.overlay.json",
-            video: "/media/1512_12_paper.mp4",
-            crops: "/crops/1512_12_paper",
-            processed: true,
-          },
-          {
-            id: "dahisar-hall1-cam2",
-            name: "Hall 1 · Camera 2",
-            processed: false,
-          },
-          {
-            id: "dahisar-hall2-cam1",
-            name: "Hall 2 · Camera 1",
-            processed: false,
-          },
-        ],
-      },
-      {
-        id: "thane",
-        name: "Thane Centre",
-        videos: [
-          { id: "thane-hall1-cam1", name: "Hall 1 · Camera 1", processed: false },
-          { id: "thane-hall1-cam3", name: "Hall 1 · Camera 3", processed: false },
-        ],
-      },
-    ],
-  },
-];
 
 export function findVideo(projects: ProjectRef[], videoId: string) {
   for (const p of projects) {
@@ -68,6 +26,17 @@ export function firstProcessed(projects: ProjectRef[]) {
     for (const c of p.centres) {
       const v = c.videos.find((x) => x.processed);
       if (v) return { project: p, centre: c, video: v };
+    }
+  }
+  return null;
+}
+
+/** Any recording at all, processed or not, so a fresh console can still land
+ *  somewhere rather than showing a blank shell. */
+export function firstVideo(projects: ProjectRef[]) {
+  for (const p of projects) {
+    for (const c of p.centres) {
+      if (c.videos.length) return { project: p, centre: c, video: c.videos[0] };
     }
   }
   return null;
