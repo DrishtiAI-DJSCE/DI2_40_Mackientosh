@@ -1,244 +1,196 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Bundle, State, Track } from "./types";
-import { STATE_ORDER } from "./types";
-import { EvidenceCard } from "./components/EvidenceCard";
-import { StateChip } from "./components/StateChip";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Bundle } from "./types";
+import type { CropManifest, Decision } from "./review";
+import { PROJECTS, findVideo, firstProcessed } from "./projects";
+import { Dashboard } from "./screens/Dashboard";
+import { ReviewScreen } from "./screens/ReviewScreen";
 import { VideoScreen } from "./screens/VideoScreen";
-import { STATE_LABEL, withDenominator } from "./lib/format";
 import "./App.css";
 
-const MEDIA = {
-  bundle: "/data/1512_12_paper.json",
-  overlay: "/data/1512_12_paper.overlay.json",
-  video: "/media/1512_12_paper.mp4",
-};
+type Screen = "dashboard" | "review" | "video";
 
-/** Sort options. Detection count is deliberately absent -- ranking by it
- *  ranks the busiest tracker, which the output contract forbids. */
-const SORTS = {
-  priority: { label: "Priority", of: (t: Track) => t.priority ?? 0 },
-  longest_episode: {
-    label: "Longest episode",
-    of: (t: Track) =>
-      t.episodes.reduce((b, e) => Math.max(b, e.to_ms - e.from_ms), 0),
-  },
-  total_handling: {
-    label: "Total handling",
-    of: (t: Track) =>
-      t.episodes.reduce((b, e) => b + (e.to_ms - e.from_ms), 0),
-  },
-  modalities: { label: "Modalities", of: (t: Track) => t.modalities.length },
-  coverage: {
-    label: "Coverage",
-    of: (t: Track) => t.coverage_of_recording ?? 0,
-  },
-  first_seen: {
-    label: "Chronological",
-    of: (t: Track) => -(t.first_seen_ms ?? 0),
-  },
-} as const;
-
-type SortKey = keyof typeof SORTS;
+const SCREENS: { id: Screen; label: string }[] = [
+  { id: "dashboard", label: "Overview" },
+  { id: "review", label: "Review" },
+  { id: "video", label: "Video" },
+];
 
 export default function App() {
+  const start = firstProcessed(PROJECTS);
+  const [videoId, setVideoId] = useState(start?.video.id ?? "");
+  const [screen, setScreen] = useState<Screen>("dashboard");
   const [bundle, setBundle] = useState<Bundle | null>(null);
+  const [crops, setCrops] = useState<CropManifest>({});
   const [error, setError] = useState<string | null>(null);
-  const [state, setState] = useState<State | "all">("review_candidate");
-  const [sort, setSort] = useState<SortKey>("priority");
-  const [screen, setScreen] = useState<"queue" | "video">("queue");
+  const [decisions, setDecisions] = useState<Record<number, Decision>>({});
+  const [openCentre, setOpenCentre] = useState<string | null>(
+    start?.centre.id ?? null,
+  );
+
+  const found = useMemo(() => findVideo(PROJECTS, videoId), [videoId]);
+  const video = found?.video;
 
   useEffect(() => {
-    fetch(MEDIA.bundle)
-      .then((r) => {
-        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    if (!video?.bundle) {
+      setBundle(null);
+      setCrops({});
+      return;
+    }
+    let live = true;
+    setError(null);
+    Promise.all([
+      fetch(video.bundle).then((r) => {
+        if (!r.ok) throw new Error(`bundle ${r.status}`);
         return r.json();
+      }),
+      video.crops
+        ? fetch(`${video.crops}/manifest.json`)
+            .then((r) => (r.ok ? r.json() : {}))
+            .catch(() => ({}))
+        : Promise.resolve({}),
+    ])
+      .then(([b, c]) => {
+        if (!live) return;
+        setBundle(b);
+        setCrops(c);
       })
-      .then(setBundle)
-      .catch((e) => setError(String(e)));
+      .catch((e) => live && setError(String(e)));
+    return () => {
+      live = false;
+    };
+  }, [video]);
+
+  const decide = useCallback((trackId: number, decision: Decision) => {
+    // Append-only in spirit: a later decision replaces the shown state, but
+    // the store keeps one entry per person and the server will keep the full
+    // history once decisions are persisted.
+    setDecisions((d) => ({ ...d, [trackId]: decision }));
   }, []);
-
-  const visible = useMemo(() => {
-    if (!bundle) return [];
-    const rows =
-      state === "all"
-        ? bundle.tracks
-        : bundle.tracks.filter((t) => t.state === state);
-    const of = SORTS[sort].of;
-    return [...rows].sort((a, b) => of(b) - of(a));
-  }, [bundle, state, sort]);
-
-  if (error) {
-    return (
-      <div className="boot boot--error">
-        <h1>Could not load the run bundle</h1>
-        <p className="mono">{error}</p>
-        <p>
-          Build one with <code>tools/build_console_bundle.py</code>.
-        </p>
-      </div>
-    );
-  }
-
-  if (!bundle) {
-    return (
-      <div className="boot">
-        <p className="mono">Loading run bundle…</p>
-      </div>
-    );
-  }
-
-  const counts = bundle.counts.states;
-  const abstain = counts.needs_better_view ?? 0;
-  const abstainStat = withDenominator(abstain, bundle.counts.tracks);
 
   return (
     <div className="app">
       <nav className="rail">
         <div className="rail__brand">
+          <span className="rail__mark" aria-hidden="true" />
           <b>Drishti</b>
-          <span className="mono">{bundle.run.run_id ?? "run"}</span>
         </div>
 
-        <p className="rail__group">Findings</p>
-        <ul className="rail__nav">
-          <li>
-            <button
-              className={screen === "queue" && state === "all" ? "is-on" : ""}
-              onClick={() => {
-                setScreen("queue");
-                setState("all");
-              }}
-            >
-              All people <b className="mono">{bundle.counts.tracks}</b>
-            </button>
-          </li>
-          {STATE_ORDER.filter((s) => counts[s] !== undefined).map((s) => (
-            <li key={s}>
-              <button
-                className={screen === "queue" && state === s ? "is-on" : ""}
-                onClick={() => {
-                  setScreen("queue");
-                  setState(s);
-                }}
-              >
-                {STATE_LABEL[s]} <b className="mono">{counts[s]}</b>
-              </button>
-            </li>
-          ))}
-        </ul>
+        {PROJECTS.map((project) => (
+          <div key={project.id} className="rail__project">
+            <p className="rail__ptitle">{project.name}</p>
+            {project.centres.map((centre) => {
+              const open = openCentre === centre.id;
+              return (
+                <div key={centre.id}>
+                  <button
+                    className="rail__centre"
+                    aria-expanded={open}
+                    onClick={() => setOpenCentre(open ? null : centre.id)}
+                  >
+                    <span>{centre.name}</span>
+                    <b className="mono">{centre.videos.length}</b>
+                  </button>
+                  {open && (
+                    <ul className="rail__videos">
+                      {centre.videos.map((v) => (
+                        <li key={v.id}>
+                          <button
+                            className={v.id === videoId ? "is-on" : ""}
+                            disabled={!v.processed}
+                            title={
+                              v.processed
+                                ? v.name
+                                : `${v.name} — not processed yet`
+                            }
+                            onClick={() => {
+                              setVideoId(v.id);
+                              setScreen("dashboard");
+                            }}
+                          >
+                            <span>{v.name}</span>
+                            {!v.processed && <em>not run</em>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
 
-        <p className="rail__group">Explore</p>
-        <ul className="rail__nav">
-          <li>
-            <button
-              className={screen === "video" ? "is-on" : ""}
-              onClick={() => setScreen("video")}
-            >
-              Video
-            </button>
-          </li>
-        </ul>
-
-        <p className="rail__group">Run</p>
-        <dl className="rail__facts mono">
-          <div>
-            <dt>video</dt>
-            <dd title={bundle.video}>{bundle.video}</dd>
-          </div>
-          <div>
-            <dt>duration</dt>
-            <dd>{(bundle.duration_ms / 1000).toFixed(1)}s</dd>
-          </div>
-          <div>
-            <dt>revision</dt>
-            <dd>
-              {(bundle.run.code_revision ?? "—").slice(0, 7)}
-              {bundle.run.code_dirty && <em> dirty</em>}
-            </dd>
-          </div>
-        </dl>
+        <button className="rail__new" type="button" disabled>
+          + New project
+        </button>
       </nav>
 
-      <main className={`main ${screen === "video" ? "main--wide" : ""}`}>
-        <header className="head">
-          <div>
-            <h1>
-              {screen === "video"
-                ? "Video"
-                : (STATE_LABEL[state as State] ?? "All people")}
-            </h1>
-            <p className="head__sub">
-              {screen === "video"
-                ? "Drag the handle to reveal what the system marked"
-                : `${visible.length} of ${bundle.counts.tracks} tracks`}
-            </p>
+      <div className="shell">
+        <header className="top">
+          <div className="top__where">
+            <span className="mono">
+              {found?.project.name} / {found?.centre.name}
+            </span>
+            <h1>{video?.name ?? "No recording selected"}</h1>
           </div>
-          {screen === "queue" && (
-            <label className="sort mono">
-              Sort
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
+          <nav className="top__tabs">
+            {SCREENS.map((s) => (
+              <button
+                key={s.id}
+                className={screen === s.id ? "is-on" : ""}
+                onClick={() => setScreen(s.id)}
+                disabled={!bundle}
               >
-                {Object.entries(SORTS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+                {s.label}
+              </button>
+            ))}
+          </nav>
         </header>
 
-        {screen === "video" && (
-          <div className="screen">
+        <main className="main">
+          {error && <p className="state state--err">{error}</p>}
+
+          {!video?.processed && (
+            <p className="state">
+              This recording has not been processed yet. Run the pipeline on it
+              to see findings — an empty dashboard would read like
+              &ldquo;nothing was found&rdquo;, which is not the same thing.
+            </p>
+          )}
+
+          {video?.processed && !bundle && !error && (
+            <p className="state mono">Loading run…</p>
+          )}
+
+          {bundle && screen === "dashboard" && (
+            <Dashboard
+              bundle={bundle}
+              crops={crops}
+              video={video!}
+              decisions={decisions}
+              onReview={() => setScreen("review")}
+            />
+          )}
+
+          {bundle && screen === "review" && (
+            <ReviewScreen
+              bundle={bundle}
+              crops={crops}
+              cropBase={video!.crops ?? ""}
+              decisions={decisions}
+              onDecide={decide}
+            />
+          )}
+
+          {bundle && screen === "video" && (
             <VideoScreen
               bundle={bundle}
-              videoSrc={MEDIA.video}
-              overlaySrc={MEDIA.overlay}
+              videoSrc={video!.video ?? ""}
+              overlaySrc={video!.overlay ?? ""}
             />
-          </div>
-        )}
-
-        {screen === "queue" && (
-          <>
-            {/* Abstention is structural, not a filter someone has to find. */}
-            <section className="abstain">
-              <StateChip state="needs_better_view" size="sm" />
-              <p>
-                The system declined to judge <b>{abstainStat.text}</b> of the
-                people it observed. That is the honest headline for this run,
-                not something to read past.
-              </p>
-            </section>
-
-            {visible.length === 0 ? (
-              <p className="empty">
-                No tracks in this state. That is a measurement, not an
-                all-clear.
-              </p>
-            ) : (
-              <div className="queue">
-                {visible.map((t) => (
-                  <EvidenceCard
-                    key={t.track_id}
-                    track={t}
-                    duration_ms={bundle.duration_ms}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        <footer className="foot">
-          <p>
-            Every number here is copied from the run artifacts, never
-            recomputed. No accuracy figure exists for this system until the
-            evaluation pack in OUTPUT_CONTRACT §9 is built.
-          </p>
-        </footer>
-      </main>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
