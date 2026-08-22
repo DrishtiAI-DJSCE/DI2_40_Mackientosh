@@ -94,6 +94,19 @@ class Guard:
     # different model with a different vocabulary. measured: 133 of 136
     # corroborations on 12_paper fell on one man.
     min_corroborations_indicator: int = 3
+    # Episode sampling caps the number of referee calls, so on a track with few
+    # representatives a count floor of 3 silently becomes "all of them must
+    # agree". The rate below is an ADDITIONAL way to clear the bar, never a
+    # replacement for the count -- see `_corroborated()`.
+    #
+    # It must stay additive. Measured on run 1510/12_paper, SAM 3's support
+    # rate on the two known paper incidents is 5 of 19 (26%) for track 118 and
+    # 5 of 29 (17%) for track 53. Requiring a 67% rate *instead of* the count
+    # dropped both out of review, along with track 18 on 01_phone. SAM 3 is a
+    # conservative referee on this corpus and its support rate on genuine
+    # handling is low; a rate-only test therefore deletes true positives.
+    min_corroboration_rate_indicator: float = 2 / 3
+    min_corroboration_samples_indicator: int = 2
     # A phone is prohibited outright, so a single refereed phone is an
     # indicator on its own -- but only when SAM 3 named it, never when the
     # single-class chit detector merely fired.
@@ -149,6 +162,36 @@ class Verdict:
         return RUNG_ORDER[self.rung] >= RUNG_ORDER[INDICATOR]
 
 
+def corroborated_enough(supported: int, adjudicated: int,
+                        guard: Guard | None = None) -> bool:
+    """Has SAM 3 backed this object claim enough to count as verified?
+
+    Two independent ways to clear the bar, whichever fires first:
+
+    1. **Count.** `supported >= min_corroborations_indicator`. This is the
+       original rule and it still carries the well-adjudicated tracks.
+    2. **Rate.** On a track whose episodes yielded only a handful of referee
+       calls, the count floor silently becomes "all of them must agree". A
+       high support rate over a small but non-trivial denominator clears it
+       instead.
+
+    The second is deliberately an OR, so this function can only ever be more
+    permissive than the count alone. Making it an AND -- or replacing the
+    count with the rate -- deletes known true positives: SAM 3 supported only
+    26% of adjudications on 12_paper track 118 and 17% on track 53, both of
+    which are real paper handling.
+
+    `fusion.py` and this module must agree on this, so both call it here.
+    """
+    guard = guard or Guard()
+    if adjudicated <= 0:
+        return False
+    if supported >= guard.min_corroborations_indicator:
+        return True
+    return (adjudicated >= guard.min_corroboration_samples_indicator
+            and supported / adjudicated >= guard.min_corroboration_rate_indicator)
+
+
 def _orientation(profile: dict, guard: Guard) -> tuple:
     """Indicators and caveats from head orientation."""
     indicators, caveats = [], []
@@ -200,12 +243,13 @@ def _object(evidence: dict | None, sam3: dict | None, guard: Guard) -> tuple:
             f"SAM 3 identified a mobile phone in their hands "
             f"({phones} frame(s)) — a phone is prohibited outright",
             1.0))
-    elif corroborated >= guard.min_corroborations_indicator:
+    elif corroborated_enough(corroborated, adjudicated, guard):
         longest = float(evidence.get("longest_episode_ms") or 0.0)
         indicators.append(Indicator(
             MODALITY_OBJECT, "object_handled_corroborated",
             f"handled a small pale object; a second model (SAM 3) "
-            f"independently agreed in {corroborated} frame(s), longest "
+            f"independently agreed in {corroborated} of {adjudicated} "
+            f"sampled frame(s), longest "
             f"continuous stretch {longest / 1000:.1f}s",
             min(corroborated / 20.0, 1.0)))
     elif adjudicated and not corroborated and not phones:

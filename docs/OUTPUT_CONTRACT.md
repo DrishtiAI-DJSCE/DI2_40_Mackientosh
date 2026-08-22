@@ -7,7 +7,11 @@ underspecified output ends up inventing the missing parts in CSS.
 This document is the specification. The code is
 `pipeline/reason_codes.py`, `pipeline/evidence_record.py`, `pipeline/fusion.py`,
 and `tools/build_evidence_records.py`. The invariants are pinned by
-`tests/test_output_contract.py` (27 tests).
+`tests/test_output_contract.py` (37 tests).
+
+`docs/DASHBOARD_OUTPUTS.md` is an **additive** companion covering the four
+orientation labels on `PersonProfile`. It changes no state, code or flag here;
+a client that ignores it sees exactly this contract.
 
 ---
 
@@ -29,13 +33,22 @@ only states that assert a policy violation are written by a human.
 | AlphaPose FastPose_DUC | Wrist/head/body features and observability | Claim eye gaze, talking, or intent | `ORIENTATION_*` guardrails; `TALKING_NOT_MEASURABLE` is emitted on every track |
 | Fusion (`pipeline/fusion.py`) | Route evidence to review | Determine cheating | `assert_machine_state()` raises on the two human states |
 
-### The COCO phone route is removed
+### The COCO phone route is removed as an *escalation* — it survives as a *proposal*
 
 `person_timeline.py` previously promoted `target_object_near_hands` to
 `severity: high` on COCO's `cell phone` rate. **Across the four completed runs,
 40 flags cited a COCO phone and 27 of those were high severity.** Every one of
-them is now context. The phone route runs through a phone-specific detector
-verified by SAM 3 (`SAM3_PHONE_NAMED`) instead.
+them is now context: `DFINE_OBJECT_CONTEXT`, which may never route anyone.
+
+What D-FINE's `cell phone` class *may* still do is raise a question.
+`OBJECT_PROPOSAL_PHONE` is emitted on every such detection — measured: 332 of
+the 5,186 records in run 1511/01_phone — and that proposal is then put to SAM 3
+with keyboard, mouse, monitor and bottle as explicit hard negatives. Only
+SAM 3 supporting it (`SAM3_PHONE_NAMED`), on a frame whose own wrist distance
+clears the association gate, reaches review.
+
+**Detectors propose; the referee verifies; neither judges.** A COCO score is a
+reason to look, never a finding.
 
 ---
 
@@ -54,7 +67,7 @@ geometry    [frozen]  box, person_box, size_ratio_to_person, torso_scale_px
 sam3                  attempted, responded, error, prompt, model, latency,
                       target_claims[], negative_claims[]
 association           track_id, seat, seat_calibrated, wrist_resolved,
-                      wrist_distance_norm, competing_tracks
+                      wrist_distance_norm, nearest_wrist, competing_tracks
 quality               person_box_px, head_resolvable, hands_resolvable,
                       occluded, track_coverage
 reason_codes [append] the whole argument, including the parts against
@@ -145,15 +158,25 @@ fail** — a card that cannot show its own arithmetic does not get shown.
 | Condition | Test | Threshold provenance |
 |---|---|---|
 | `proposal_survives_geometry` | detections survived the wrist and size gates | measured |
-| `sam3_supports_or_cannot_exclude` | ≥3 supported, or a phone named, or no adjudication available | measured (133 of 136 on one man, 12_paper) |
-| `associated_with_this_person` | a wrist resolved in ≥25% of sightings | declared |
+| `sam3_supports_or_cannot_exclude` | ≥3 supported, **or** ≥2 sampled replies of which ≥67% supported, or a phone is SAM 3 phone-supported, or no adjudication available | count measured (133 of 136 on one man, 12_paper); the rate is an **additional** path for sampling-thinned tracks, never a replacement — see below |
+| `associated_with_this_person` | paper: a wrist resolved in ≥25% of sightings; phone: the individual SAM 3 phone-supported frame is ≤0.75 person widths from that track's recorded wrist | paper threshold declared; per-frame phone association declared pending the evaluation pack |
 | `lasts_or_recurs` | ≥5 s continuous, **or** ≥2 episodes totalling ≥5 s | measured (top false positive on 12_paper handled for 5.0 s) |
 | `no_dominant_equipment_explanation` | <60% of adjudications named equipment | measured (04_talking 402/409 = 98%; 12_paper 48/184 = 26%) |
 
+**The corroboration rate may only ever add passes.** `verdict.corroborated_enough()`
+is the single implementation, called by both `verdict.py` and `fusion.py`.
+Making the rate a replacement for the count was tried and reverted: SAM 3's
+support rate on the two known 12_paper incidents is 5 of 19 (26%, track 118)
+and 5 of 29 (17%, track 53), so a 67% rate test dropped both out of review,
+along with 01_phone track 18. SAM 3 is a conservative referee on this corpus.
+Pinned by `test_corroboration_rate_supplements_the_count_and_never_replaces_it`.
+
 Plus two escalation shortcuts and one asymmetry:
 
-- **A phone named by SAM 3 routes to review on its own.** The item is
-  prohibited outright; a second sense adds nothing.
+- **A phone SAM 3 supports routes to review on its own — on the frame where it
+  was supported.** The item is prohibited outright, so a second sense adds
+  nothing; but the naming still has to land at *this* person's wrist in *that*
+  frame. Track-level wrist coverage may not stand in for it.
 - **Two independent behaviour modalities route to review.** Orientation, object
   and presence are the three; the chit detector and SAM 3 are **one** modality,
   not two, because they look at the same pixels for the same thing.
@@ -182,12 +205,13 @@ per-exam switch, and flipping it demotes paper handling to context — tested.
 
 ### Phone
 
-The COCO path is gone. A phone reaches review only when SAM 3 names it
+The COCO path is gone. A phone reaches review only when SAM 3 phone-supports it
 (`SAM3_PHONE_NAMED`) **and** the `associated_with_this_person` condition
-passes. Naming alone is not enough: a phone on a neighbouring desk, or in an
-invigilator's hand, falls inside the crop cut for a track, and routing on the
-name alone would make it evidence against whoever that crop belonged to. When
-the object is named but not attributable the state is `needs_better_view`.
+passes on that same frame. Naming alone is not enough: a phone on a neighbouring
+desk, or in an invigilator's hand, falls inside the crop cut for a track, and
+routing on the name alone would make it evidence against whoever that crop
+belonged to. When the object is named but not attributable the state is
+`needs_better_view`.
 Keyboard, mouse, monitor and water bottle are explicit hard negatives in the
 prompt. When the object is too small or hidden the answer is
 `TARGET_BELOW_RESOLUTION` / `needs_better_view`, never a negative finding.
@@ -322,7 +346,9 @@ independent audit of revision `7d2359f` in an isolated checkout.
 
 | Gap | Consequence |
 |---|---|
-| **No independent phone proposal model** | every phone event today comes from SAM 3 *reclassifying a chit crop*. `OBJECT_PROPOSAL_PHONE` is declared, not emitted. A phone that the chit detector never proposes is invisible. Blocked: `handphone-dataset-2` has **0 trained versions** — it is a dataset, not a deployable model |
+| **No fine-tuned phone detector** | `OBJECT_PROPOSAL_PHONE` *is* emitted now — D-FINE's stock COCO `cell phone` class proposes and SAM 3 verifies (332 proposals in run 1511/01_phone). What is missing is a phone detector trained on this corpus: COCO's class fires on monitors, dark bezels and desk edges, so recall rests on a class that was never tuned for a 26×21 px handset on overhead CCTV. Blocked: `handphone-dataset-2` has **0 trained versions** — it is a dataset, not a deployable model. The dismissed mouse/monitor/bezel cards from review are the hard-negative set that would fix it |
+| **Sub-threshold phones are dropped** | a proposal below the D-FINE confidence floor is never adjudicated, even when it recurs in the same place at the same wrist across many frames. The floor is a call-volume cap, not a judgement, so spatially-consistent low-score recurrence should open an episode anyway. Not implemented |
+| **No SAM 3 result cache** | identical crops are re-sent across reruns. Keying by crop hash + prompt + model version would cut repeat-run cost to near zero. Not implemented |
 | No temporal SAM 3 window | verification is per-crop; `SAM3_MASK_UNSTABLE` is declared, never computed |
 | No object identity across people | object passing / handoff is undetectable |
 | **Seat calibration exists but is unapproved** | `calib/` holds 7 profiles covering 58 seats. Only `cam12` is `approved`; the other 6 are machine-proposed `draft`s from `tools/propose_calibration.py`. `seat_association.associate()` returns nothing for a draft, so `run_person_timeline.py` falls back to `seat_state="unattributed"` for every person — which is why all 1,010 tracks carry `SEAT_UNCALIBRATED`. **Zero blocking validation issues stand on any draft**; each needs a named reviewer and a human look at the polygons. No code change. |

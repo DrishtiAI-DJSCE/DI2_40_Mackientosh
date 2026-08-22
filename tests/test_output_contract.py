@@ -15,6 +15,7 @@ import pytest
 from pipeline import evidence_record as er
 from pipeline import fusion
 from pipeline import reason_codes as rc
+from pipeline import verdict
 
 
 # --- the vocabulary -----------------------------------------------------------
@@ -64,12 +65,15 @@ def test_declared_only_codes_are_declared_not_hidden():
 # --- the record ---------------------------------------------------------------
 
 def _record(**kw):
+    # `association` is a default, not a fixture: the phone route is decided on
+    # the individual frame's wrist distance, so those tests must be able to
+    # supply their own. setdefault keeps every existing call site unchanged.
+    kw.setdefault("association", er.Association(track_id=7))
     record = er.EvidenceRecord(
         provenance=er.Provenance(run_id="t", video="v.mkv", pts_ms=250.0),
         detector=er.Detector(name="chit-paper-new", version="2",
                              class_name="paper_like_object", confidence=0.61),
         geometry=er.Geometry(box=(10.0, 10.0, 30.0, 30.0)),
-        association=er.Association(track_id=7),
         **kw)
     return record.assign_id()
 
@@ -285,26 +289,105 @@ def test_named_phone_still_requires_association():
     the crop cut for this track. Routing on the name alone would make it
     evidence against whoever the crop belonged to.
     """
-    record = _record(sam3=er.Sam3Response(attempted=True, responded=True))
-    record.add_reason(rc.SAM3_PHONE_NAMED.code)
+    unassociated_record = _record(
+        association=er.Association(track_id=7, wrist_resolved=True,
+                                   wrist_distance_norm=0.76),
+        sam3=er.Sam3Response(attempted=True, responded=True))
+    unassociated_record.add_reason(rc.SAM3_PHONE_NAMED.code)
     unassociated = fusion.route(
         _profile(),
         _evidence(sightings=100, wrist_resolved_sightings=5,
                   raw_detections=40, kept_detections=12,
                   episodes=[[0, 9000]], longest_episode_ms=9000.0,
                   total_handling_ms=9000.0),
-        [record])
+        [unassociated_record])
     assert unassociated.state == fusion.NEEDS_BETTER_VIEW
     assert rc.SAM3_PHONE_NAMED.code in unassociated.reason_codes
 
+    associated_record = _record(
+        association=er.Association(track_id=7, wrist_resolved=True,
+                                   wrist_distance_norm=0.20,
+                                   nearest_wrist="right"),
+        sam3=er.Sam3Response(attempted=True, responded=True))
+    associated_record.add_reason(rc.SAM3_PHONE_NAMED.code)
     associated = fusion.route(
         _profile(),
         _evidence(sightings=100, wrist_resolved_sightings=100,
                   raw_detections=40, kept_detections=12,
                   episodes=[[0, 9000]], longest_episode_ms=9000.0,
                   total_handling_ms=9000.0),
-        [record])
+        [associated_record])
     assert associated.state == fusion.REVIEW_CANDIDATE
+
+
+def test_phone_association_cannot_be_inferred_from_track_coverage():
+    """A wrist elsewhere in the track does not own this phone frame."""
+    record = _record(
+        association=er.Association(track_id=7, wrist_resolved=True,
+                                   wrist_distance_norm=-1.0),
+        sam3=er.Sam3Response(attempted=True, responded=True))
+    record.add_reason(rc.SAM3_PHONE_NAMED.code)
+    out = fusion.route(
+        _profile(),
+        _evidence(sightings=100, wrist_resolved_sightings=100,
+                  raw_detections=4, kept_detections=1,
+                  episodes=[[0, 9000]], longest_episode_ms=9000.0,
+                  total_handling_ms=9000.0),
+        [record])
+    assert out.state == fusion.NEEDS_BETTER_VIEW
+    association = next(c for c in out.conditions
+                       if c.name == "associated_with_this_person")
+    assert association.passed is False
+
+
+def test_corroboration_uses_rate_after_episode_sampling():
+    records = []
+    for code in (rc.SAM3_SUPPORTED.code, rc.SAM3_SUPPORTED.code,
+                 rc.SAM3_NOT_CONFIRMED.code):
+        record = _record(sam3=er.Sam3Response(attempted=True, responded=True))
+        record.add_reason(code)
+        records.append(record)
+    out = fusion.route(
+        _profile(),
+        _evidence(raw_detections=9, kept_detections=5,
+                  episodes=[[0, 9000]], longest_episode_ms=9000.0,
+                  total_handling_ms=9000.0), records)
+    assert out.state == fusion.REVIEW_CANDIDATE
+    condition = next(c for c in out.conditions
+                     if c.name == "sam3_supports_or_cannot_exclude")
+    assert "2 of 3" in condition.detail
+
+
+def test_corroboration_rate_supplements_the_count_and_never_replaces_it():
+    """The rate is an extra way to pass, never a stricter one.
+
+    Replacing the count floor with a 2/3 rate dropped 12_paper tracks 118
+    (5 of 19 supported) and 53 (5 of 29) out of review, and both are real
+    paper handling. SAM 3 is a conservative referee on this corpus; a
+    rate-only test deletes true positives.
+    """
+    guard = verdict.Guard()
+
+    # The two measured true positives: low rate, but the count clears it.
+    assert verdict.corroborated_enough(5, 19, guard) is True
+    assert verdict.corroborated_enough(5, 29, guard) is True
+
+    # The small-denominator rescue the rate exists for.
+    assert verdict.corroborated_enough(2, 2, guard) is True
+    assert verdict.corroborated_enough(2, 3, guard) is True
+
+    # Genuinely unsupported stays unsupported.
+    assert verdict.corroborated_enough(0, 42, guard) is False
+    assert verdict.corroborated_enough(1, 14, guard) is False
+    assert verdict.corroborated_enough(0, 0, guard) is False
+
+    # The invariant: adding the rate may only ever ADD passes.
+    for supported in range(0, 8):
+        for adjudicated in range(supported, 40):
+            if supported >= guard.min_corroborations_indicator:
+                assert verdict.corroborated_enough(supported, adjudicated,
+                                                   guard) is True, \
+                    f"count floor regressed at {supported}/{adjudicated}"
 
 
 # --- the referee's match test -------------------------------------------------

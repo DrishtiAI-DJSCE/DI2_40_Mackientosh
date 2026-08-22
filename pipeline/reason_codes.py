@@ -193,7 +193,7 @@ SAM3_NOT_CONFIRMED = _r(
 
 SAM3_PHONE_NAMED = _r(
     "SAM3_PHONE_NAMED", D_OBJECT, R_REVIEW,
-    "SAM 3 named the object a mobile phone",
+    "SAM 3 phone-supported the object",
     "still a proposal about an object, not a finding about a person; seat and "
     "hand association are still required")
 

@@ -97,6 +97,12 @@ class Policy:
     # needs_better_view rather than to no_action.
     min_wrist_resolution_rate: float = 0.25
 
+    # A phone can only be attributed on the individual supported frame. Track
+    # level wrist coverage is not enough: a neighbouring desk can be inside a
+    # crop while this candidate's wrist resolves elsewhere in the recording.
+    # Declared until the labelled evaluation pack establishes a tighter value.
+    max_phone_wrist_distance_norm: float = 0.75
+
     # Exam policy. Loose paper is prohibited by default because that is the
     # rule in the corpus we have; a hall that issues rough sheets sets this
     # False and paper handling drops to context_observation.
@@ -133,6 +139,7 @@ class TrackOutcome:
     sam3_not_confirmed: int = 0
     sam3_unavailable: int = 0
     sam3_phone: int = 0
+    sam3_phone_at_wrist: int = 0
 
     priority: float = 0.0
 
@@ -198,20 +205,32 @@ def _object_conditions(outcome, evidence, policy):
         f"{outcome.gated} of {outcome.proposals} proposals were at a wrist and "
         f"small enough, across {episodes} episode(s)"))
 
+    supported_rate = (outcome.sam3_supported / adjudicated) if adjudicated else 0.0
     verified = (outcome.sam3_phone > 0
-                or outcome.sam3_supported >= guard.min_corroborations_indicator
+                or vd.corroborated_enough(outcome.sam3_supported, adjudicated,
+                                          guard)
                 or adjudicated == 0)
     outcome.conditions.append(Condition(
         "sam3_supports_or_cannot_exclude", verified,
-        f"SAM 3 supported {outcome.sam3_supported}, named a phone "
+        f"SAM 3 supported {outcome.sam3_supported} of {adjudicated} "
+        f"adjudication(s) ({supported_rate:.0%}), named a phone "
         f"{outcome.sam3_phone}, could not confirm {outcome.sam3_not_confirmed}, "
         f"called equipment {outcome.sam3_equipment}"
         if adjudicated else "not adjudicated by SAM 3"))
 
-    associated = wrist_rate >= policy.min_wrist_resolution_rate
+    if outcome.sam3_phone:
+        associated = outcome.sam3_phone_at_wrist > 0
+        association_detail = (f"{outcome.sam3_phone_at_wrist} of "
+                              f"{outcome.sam3_phone} SAM 3 phone-supported "
+                              f"frame(s) were within "
+                              f"{policy.max_phone_wrist_distance_norm:.2f} "
+                              f"person widths of this track's wrist")
+    else:
+        associated = wrist_rate >= policy.min_wrist_resolution_rate
+        association_detail = f"a wrist resolved in {wrist_rate:.0%} of this person's sightings"
     outcome.conditions.append(Condition(
         "associated_with_this_person", associated,
-        f"a wrist resolved in {wrist_rate:.0%} of this person's sightings"))
+        association_detail))
 
     # Recurrence needs a floor on total time as well as on episode count.
     # Without it, four separate 250 ms sampler hits -- 1.0 s of handling in
@@ -267,6 +286,11 @@ def route(profile: dict, evidence: dict | None = None,
         out.sam3_not_confirmed += record.has(rc.SAM3_NOT_CONFIRMED.code)
         out.sam3_unavailable += record.has(rc.SAM3_UNAVAILABLE.code)
         out.sam3_phone += record.has(rc.SAM3_PHONE_NAMED.code)
+        if record.has(rc.SAM3_PHONE_NAMED.code) \
+                and record.association.wrist_distance_norm >= 0 \
+                and record.association.wrist_distance_norm \
+                <= policy.max_phone_wrist_distance_norm:
+            out.sam3_phone_at_wrist += 1
 
     # --- observability, evaluated before anything else ------------------------
     coverage = float(profile.get("coverage_of_recording") or 0.0)
@@ -373,10 +397,12 @@ def route(profile: dict, evidence: dict | None = None,
     # it does not say *whose* it is. Routing on the name alone would let a
     # phone visible on a neighbouring desk, or in an invigilator's hand,
     # become evidence against whichever track the crop was cut from.
-    associated = next((c.passed for c in out.conditions
-                       if c.name == "associated_with_this_person"), False)
-
-    if out.sam3_phone and associated:
+    #
+    # The test is per frame, not per track: `sam3_phone_at_wrist` counts only
+    # supported frames whose own wrist distance cleared the gate. Track level
+    # wrist coverage cannot stand in for it, because a wrist resolving at some
+    # other point in the recording says nothing about this frame.
+    if out.sam3_phone_at_wrist:
         # A phone named by the verifier AND at this person's hands is
         # prohibited outright; there is nothing a second sense could add.
         out.state = REVIEW_CANDIDATE
@@ -406,7 +432,7 @@ def route(profile: dict, evidence: dict | None = None,
         out.state = NO_ACTION
 
     out.priority = (len(out.modalities) * 10.0
-                    + out.sam3_phone * 8.0
+                    + out.sam3_phone_at_wrist * 8.0
                     + min(out.sam3_supported, 20) * 0.25
                     + (1.0 if out.state == REVIEW_CANDIDATE else 0.0))
     return out

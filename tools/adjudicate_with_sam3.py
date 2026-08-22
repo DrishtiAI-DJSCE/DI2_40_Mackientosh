@@ -405,9 +405,9 @@ def main() -> int:
                     # and a dark rectangle there is far more often a mouse than
                     # a handset. The guardrail direction is not to accuse.
                     if phone_hit and phone_hit >= confuser_conf:
-                        item["sam3"] = {"verdict": "phone_confirmed",
+                        item["sam3"] = {"verdict": "phone_supported",
                                         "confidence": round(phone_hit, 4)}
-                        verdicts["phone_confirmed"] += 1
+                        verdicts["phone_supported"] += 1
                     elif confuser_hit:
                         item["sam3"] = {"verdict": "suppressed",
                                         "as": confuser_hit}

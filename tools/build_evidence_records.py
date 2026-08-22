@@ -55,7 +55,11 @@ SAM3_VERDICT_CODE = {
     # A D-FINE phone proposal the referee agreed with. Same code as the
     # escalation above: what matters downstream is that SAM 3 named a phone,
     # not which detector raised the question.
+    # `phone_confirmed` is accepted for historic run folders only. New runs
+    # write `phone_supported`: SAM 3 supports an object claim, never a human
+    # policy decision.
     "phone_confirmed": rc.SAM3_PHONE_NAMED.code,
+    "phone_supported": rc.SAM3_PHONE_NAMED.code,
     # COCO said phone, SAM 3 said paper. The phone claim is not confirmed;
     # the paper reading is already carried by the chit path.
     "phone_was_paper": rc.SAM3_NOT_CONFIRMED.code,
@@ -132,6 +136,13 @@ def build(run_dir: Path, cfg: ce.EvidenceConfig) -> tuple:
             kept, gate_reason, size_ratio, distance = ce.gate_detection(
                 row, item, cfg) if is_chit else (False, "", 0.0, None)
 
+            stored_distance = item.get("wrist_distance_norm")
+            if stored_distance is not None:
+                try:
+                    stored_distance = float(stored_distance)
+                except (TypeError, ValueError):
+                    stored_distance = None
+            wrist_distance = stored_distance if stored_distance is not None else distance
             record = er.EvidenceRecord(
                 provenance=er.Provenance(
                     run_id=run_id, video=video, camera=run_dir.name,
@@ -153,8 +164,9 @@ def build(run_dir: Path, cfg: ce.EvidenceConfig) -> tuple:
                                          and row["seat_state"] != "unattributed"),
                     wrist_resolved=bool(row.get("left_wrist")
                                         or row.get("right_wrist")),
-                    wrist_distance_norm=(round(distance, 4)
-                                         if distance is not None else -1.0)),
+                    wrist_distance_norm=(round(wrist_distance, 4)
+                                         if wrist_distance is not None else -1.0),
+                    nearest_wrist=str(item.get("nearest_wrist") or "")),
                 quality=er.Quality(
                     person_box_px=int(min(person_w, person_h)),
                     head_resolvable=row.get("yaw") is not None,
@@ -185,7 +197,8 @@ def build(run_dir: Path, cfg: ce.EvidenceConfig) -> tuple:
                             record.sam3.negative_claims.append(er.Sam3Claim(
                                 phrase=str(verdict["as"]),
                                 confidence=float(verdict.get("confidence") or 0.0)))
-                        if verdict.get("verdict") == "phone_confirmed":
+                        if verdict.get("verdict") in ("phone_confirmed",
+                                                      "phone_supported"):
                             record.sam3.target_claims.append(er.Sam3Claim(
                                 phrase="mobile phone",
                                 confidence=float(verdict.get("confidence") or 0.0)))
@@ -217,7 +230,8 @@ def build(run_dir: Path, cfg: ce.EvidenceConfig) -> tuple:
                                      confidence=float(verdict.get("confidence")
                                                       or 0.0)))
                 if verdict.get("verdict") in ("corroborated",
-                                              "reclassified_as_phone"):
+                                              "reclassified_as_phone",
+                                              "phone_supported"):
                     record.sam3.target_claims.append(
                         er.Sam3Claim(phrase=str(verdict.get("verdict")),
                                      confidence=float(verdict.get("confidence")

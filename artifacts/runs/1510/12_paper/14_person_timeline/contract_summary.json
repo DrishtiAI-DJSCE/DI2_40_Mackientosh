@@ -14,8 +14,8 @@
  "states": {
   "no_action": 0,
   "context_observation": 16,
-  "needs_better_view": 217,
-  "review_candidate": 3,
+  "needs_better_view": 218,
+  "review_candidate": 2,
   "human_confirmed": 0,
   "human_dismissed": 0
  },

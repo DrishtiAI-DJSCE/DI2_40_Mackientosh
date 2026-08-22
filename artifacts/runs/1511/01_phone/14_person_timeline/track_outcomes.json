@@ -18,7 +18,7 @@
   "modalities": [
    "object_at_hands"
   ],
-  "priority": 259.0,
+  "priority": 91.0,
   "conditions": [
    {
     "name": "proposal_survives_geometry",
@@ -28,12 +28,12 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": true,
-    "detail": "SAM 3 supported 0, named a phone 31, could not confirm 29, called equipment 0"
+    "detail": "SAM 3 supported 0 of 60 adjudication(s) (0%), named a phone 31, could not confirm 29, called equipment 0"
    },
    {
     "name": "associated_with_this_person",
     "passed": true,
-    "detail": "a wrist resolved in 100% of this person's sightings"
+    "detail": "10 of 31 SAM 3 phone-supported frame(s) were within 0.75 person widths of this track's wrist"
    },
    {
     "name": "lasts_or_recurs",
@@ -80,7 +80,7 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 13, called equipment 10"
+    "detail": "SAM 3 supported 0 of 23 adjudication(s) (0%), named a phone 0, could not confirm 13, called equipment 10"
    },
    {
     "name": "associated_with_this_person",
@@ -133,7 +133,7 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 6, called equipment 20"
+    "detail": "SAM 3 supported 0 of 26 adjudication(s) (0%), named a phone 0, could not confirm 6, called equipment 20"
    },
    {
     "name": "associated_with_this_person",
@@ -184,7 +184,7 @@
   "modalities": [
    "head_orientation"
   ],
-  "priority": 28.0,
+  "priority": 20.0,
   "conditions": [
    {
     "name": "proposal_survives_geometry",
@@ -194,12 +194,12 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": true,
-    "detail": "SAM 3 supported 4, named a phone 2, could not confirm 10, called equipment 3"
+    "detail": "SAM 3 supported 4 of 19 adjudication(s) (21%), named a phone 2, could not confirm 10, called equipment 3"
    },
    {
     "name": "associated_with_this_person",
     "passed": true,
-    "detail": "a wrist resolved in 98% of this person's sightings"
+    "detail": "1 of 2 SAM 3 phone-supported frame(s) were within 0.75 person widths of this track's wrist"
    },
    {
     "name": "lasts_or_recurs",
@@ -247,7 +247,7 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 2, named a phone 0, could not confirm 15, called equipment 0"
+    "detail": "SAM 3 supported 2 of 17 adjudication(s) (12%), named a phone 0, could not confirm 15, called equipment 0"
    },
    {
     "name": "associated_with_this_person",
@@ -323,7 +323,7 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 6, called equipment 1"
+    "detail": "SAM 3 supported 0 of 7 adjudication(s) (0%), named a phone 0, could not confirm 6, called equipment 1"
    },
    {
     "name": "associated_with_this_person",
@@ -354,7 +354,7 @@
  {
   "track_id": 18,
   "seat": "unattributed",
-  "state": "review_candidate",
+  "state": "needs_better_view",
   "reason_codes": [
    "SEAT_UNCALIBRATED",
    "TALKING_NOT_MEASURABLE",
@@ -366,12 +366,13 @@
    "SAM3_UNAVAILABLE",
    "ORIENTATION_AWAY_SUSTAINED",
    "ORIENTATION_CHANGE_FREQUENT",
-   "ORIENTATION_DOWN_PROLONGED"
+   "ORIENTATION_DOWN_PROLONGED",
+   "OBJECT_NO_WRIST_RESOLVED"
   ],
   "modalities": [
    "head_orientation"
   ],
-  "priority": 19.25,
+  "priority": 10.25,
   "conditions": [
    {
     "name": "proposal_survives_geometry",
@@ -381,12 +382,12 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": true,
-    "detail": "SAM 3 supported 1, named a phone 1, could not confirm 12, called equipment 0"
+    "detail": "SAM 3 supported 1 of 14 adjudication(s) (7%), named a phone 1, could not confirm 12, called equipment 0"
    },
    {
     "name": "associated_with_this_person",
-    "passed": true,
-    "detail": "a wrist resolved in 98% of this person's sightings"
+    "passed": false,
+    "detail": "0 of 1 SAM 3 phone-supported frame(s) were within 0.75 person widths of this track's wrist"
    },
    {
     "name": "lasts_or_recurs",
@@ -455,7 +456,7 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 1, called equipment 0"
+    "detail": "SAM 3 supported 0 of 1 adjudication(s) (0%), named a phone 0, could not confirm 1, called equipment 0"
    },
    {
     "name": "associated_with_this_person",
@@ -506,7 +507,7 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 2, called equipment 0"
+    "detail": "SAM 3 supported 0 of 2 adjudication(s) (0%), named a phone 0, could not confirm 2, called equipment 0"
    },
    {
     "name": "associated_with_this_person",
@@ -582,7 +583,7 @@
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 1, named a phone 0, could not confirm 10, called equipment 2"
+    "detail": "SAM 3 supported 1 of 13 adjudication(s) (8%), named a phone 0, could not confirm 10, called equipment 2"
    },
    {
     "name": "associated_with_this_person",

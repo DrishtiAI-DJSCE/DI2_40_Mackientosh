@@ -177,3 +177,42 @@ __pycache__/
 # have twice resurrected files an earlier rule excluded.
 /artifacts/runs/**/*.mp4
 /artifacts/runs/**/evidence_records.jsonl
+
+# Runs 1512 (12_paper + 04_talking, the first end-to-end run on the per-frame
+# phone association) and 1513 (a determinism control: 12_paper run twice on
+# identical code, which came back bit-identical). Same terms as 1503-1511 --
+# the reviewable summaries and the two sample files needed to rebuild, nothing
+# else. 1512 alone is 176 MB on disk.
+!/artifacts/runs/151[23]/
+!/artifacts/runs/151[23]/**
+/artifacts/runs/151[23]/**/annotated/**
+/artifacts/runs/151[23]/**/samples.jsonl
+/artifacts/runs/151[23]/**/samples_chit_gated.jsonl
+
+# Scratch comparison copies. The committed track_outcomes.json IS the baseline;
+# `git show <rev>:<path>` recovers any earlier one, so these were redundant.
+*.baseline
+
+# Other assistants' skill installs, alongside the IDE state above.
+/.agents/
+/skills-lock.json
+
+# Console demo media, generated from a run by the two bundler tools.
+#
+# Committing them would put 11 MB of derived bytes in the tree for something
+# `tools/build_overlay_bundle.py` and one ffmpeg transcode reproduce exactly.
+# The small queue bundle IS committed: it is 299 KB, it diffs cleanly, and it
+# is what makes the console open to something on a fresh checkout.
+/console/public/media/
+/console/public/data/*.overlay.json
+
+# Final re-assert. gitignore is last-match-wins and the per-run whitelists
+# above have now resurrected a large file three times.
+/artifacts/runs/**/*.mp4
+/artifacts/runs/**/evidence_records.jsonl
+
+# Secrets - never commit credentials
+.env
+.env.*
+*.env
+secrets.json

@@ -216,6 +216,7 @@ def main() -> int:
             return ((float(j["x"]), float(j["y"]))
                     if j and j.get("observability") == "visible" else None)
 
+        timeline_cfg = pt.TimelineConfig()
         samples.append(pt.PersonSample(
             track_id=track_id if track_id is not None else -1,
             pts_ms=float(row["pts_ms"]),
@@ -223,6 +224,8 @@ def main() -> int:
             seat_state=row.get("seat_state", "unattributed"),
             torso_scale_px=row.get("torso_scale_px"),
             yaw=head.yaw, pitch=head.pitch, roll=head.roll,
+            yaw_relative_to_torso=head.yaw_relative_to_torso,
+            orientation_state=pt.pitch_state(head.pitch, timeline_cfg),
             facing=head.facing, head_scale_px=head.head_scale_px,
             left_wrist=wrist("left_wrist"), right_wrist=wrist("right_wrist"),
             wrist_below_desk=bool(row.get("wrist_in_lap_context")),
@@ -245,22 +248,29 @@ def main() -> int:
         for item in found:
             box = item["box"]
             cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
-            best, best_distance = None, None
+            best, best_torso_distance, best_norm_distance, best_wrist = \
+                None, None, None, ""
             for sample in here:
                 scale = sample.torso_scale_px
                 if not scale:
                     continue
-                for wrist in (sample.left_wrist, sample.right_wrist):
+                person_w = max(sample.box[2] - sample.box[0], 1.0)
+                for wrist_name, wrist in (("left", sample.left_wrist),
+                                          ("right", sample.right_wrist)):
                     if not wrist:
                         continue
-                    distance = math.hypot(cx - wrist[0], cy - wrist[1]) / scale
-                    if best_distance is None or distance < best_distance:
-                        best, best_distance = sample, distance
-            if best is not None and best_distance <= tcfg_attach.near_hand_torso:
+                    torso_distance = math.hypot(cx - wrist[0], cy - wrist[1]) / scale
+                    if best_torso_distance is None or torso_distance < best_torso_distance:
+                        best, best_torso_distance = sample, torso_distance
+                        best_norm_distance = math.hypot(cx - wrist[0], cy - wrist[1]) / person_w
+                        best_wrist = wrist_name
+            if best is not None and best_torso_distance <= tcfg_attach.near_hand_torso:
                 best.near_hand_objects.append({
                     "cls": item["cls"], "confidence": item["confidence"],
                     "box": box, "source": "full_frame",
-                    "wrist_distance_torso": round(best_distance, 3)})
+                    "nearest_wrist": best_wrist,
+                    "wrist_distance_norm": round(best_norm_distance, 4),
+                    "wrist_distance_torso": round(best_torso_distance, 3)})
                 attached += 1
             else:
                 unattached += 1
@@ -296,7 +306,9 @@ def main() -> int:
                 if not scale:
                     continue
                 radius = max(scale * args.hand_crop_torso, 24.0)
-                for wrist in (sample.left_wrist, sample.right_wrist):
+                person_w = max(sample.box[2] - sample.box[0], 1.0)
+                for wrist_name, wrist in (("left", sample.left_wrist),
+                                          ("right", sample.right_wrist)):
                     if not wrist:
                         continue
                     x1 = max(int(wrist[0] - radius), 0)
@@ -312,11 +324,17 @@ def main() -> int:
                         taxonomy = od.COCO_TO_TAXONOMY.get(det.cls)
                         if taxonomy is None or det.cls == "person":
                             continue
+                        cx = (det.box[0] + det.box[2]) / 2.0
+                        cy = (det.box[1] + det.box[3]) / 2.0
+                        distance_px = math.hypot(cx - wrist[0], cy - wrist[1])
                         sample.near_hand_objects.append({
                             "cls": taxonomy,
                             "confidence": round(float(det.confidence), 4),
                             "box": [round(float(v), 1) for v in det.box],
-                            "source": "wrist_crop"})
+                            "source": "wrist_crop",
+                            "nearest_wrist": wrist_name,
+                            "wrist_distance_norm": round(distance_px / person_w, 4),
+                            "wrist_distance_torso": round(distance_px / scale, 3)})
                         found += 1
             if looked and looked % 500 == 0:
                 print(f"    hand crops: {looked} looked, {found} objects",
