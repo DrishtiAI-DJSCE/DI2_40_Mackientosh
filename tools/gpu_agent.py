@@ -110,9 +110,13 @@ def _stages(run_dir, source, run_key):
 class Console:
     """The console's job API, over plain HTTP."""
 
-    def __init__(self, base: str, agent: str):
+    def __init__(self, base: str, agent: str, agent_token: str | None = None):
         self.base = base.rstrip("/")
         self.agent = agent
+        # Authorises claiming work. Without it a public console would let a
+        # stranger drain the queue -- and on a GPU billed by the hour, spend
+        # someone else's money.
+        self.agent_token = agent_token
         self.token: str | None = None
 
     def _call(self, path: str, body: dict | None = None, method="POST"):
@@ -127,7 +131,8 @@ class Console:
             return json.loads(res.read().decode())
 
     def claim(self) -> tuple[dict, dict] | None:
-        doc = self._call("/api/jobs/claim", {"agent": self.agent})
+        doc = self._call("/api/jobs/claim",
+                         {"agent": self.agent, "agent_token": self.agent_token})
         if not doc.get("job"):
             return None
         self.token = doc["claim_token"]
@@ -282,7 +287,12 @@ def main() -> int:
                     help="do not delete the downloaded recording afterwards")
     args = ap.parse_args()
 
-    console = Console(args.console, args.agent)
+    agent_token = os.environ.get("DRISHTI_AGENT_TOKEN")
+    if not agent_token:
+        print("DRISHTI_AGENT_TOKEN is not set; the console will refuse to hand "
+              "out work.", file=sys.stderr)
+        return 2
+    console = Console(args.console, args.agent, agent_token)
     print(f"agent {args.agent} -> {console.base}", flush=True)
 
     while True:

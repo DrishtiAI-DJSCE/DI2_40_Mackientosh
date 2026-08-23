@@ -113,6 +113,7 @@ export async function createApp({ serveStatic = true } = {}) {
     describe: process.env.CEREBRAS_API_KEY
       ? (payload) => describeImage(payload)
       : null,
+    agentToken: process.env.AGENT_TOKEN || null,
   });
 
   const app = express();

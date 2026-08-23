@@ -70,6 +70,14 @@ def main() -> int:
                     default=ROOT / "models/dfine/onnx/model.onnx")
     ap.add_argument("--sample-hz", type=float, default=2.0)
     ap.add_argument("--pose-device", default="cuda")
+    ap.add_argument("--pose-backend", default="auto",
+                    choices=("auto", "alphapose", "rtmlib"),
+                    help="auto uses AlphaPose when its checkpoint is present "
+                         "and rtmlib otherwise; rtmlib downloads its own ONNX "
+                         "weights, which is what makes a fresh rented GPU "
+                         "usable without shipping 333 MB of .pth")
+    ap.add_argument("--rtmlib-config", default="rtmpose_baseline",
+                    choices=("rtmpose_baseline", "rtmo_baseline", "rtmo_large"))
     ap.add_argument("--annotate", type=int, default=40,
                     help="sampled frames to render with every person boxed and "
                          "given a gaze arrow. 0 none, -1 all.")
@@ -187,14 +195,43 @@ def main() -> int:
               f"{len(pose_rows)} pose rows from tracked boxes directly")
 
     pose_reader = SequentialFrameReader(args.video)
-    pose_runner = ps.alphapose_runner(
-        "alphapose_crowd_baseline",
-        str(ROOT / "models/alphapose/256x192_res152_lr1e-3_1x-duc.yaml"),
-        str(ROOT / "models/alphapose/fast_421_res152_256x192.pth"),
-        frame_reader=pose_reader, device=args.pose_device)
-    pose_result = ps.run(pose_rows, pose_runner, "alphapose_crowd_baseline",
-                         profile_doc)
-    print(f"  pose: {pose_result.state} "
+
+    # Which pose model runs, and why it is a choice rather than a constant.
+    #
+    # AlphaPose is the measured baseline for this corpus and stays the default.
+    # It needs a 333 MB checkpoint that is deliberately not in git, which is
+    # fine on a machine that has been set up once and fatal on an ephemeral
+    # rented GPU: the pod would burn paid minutes downloading weights, or fail
+    # outright.
+    #
+    # rtmlib fetches its own ONNX weights on first use, so `--pose-backend
+    # rtmlib` makes a fresh pod viable. It is a *different model* and will not
+    # reproduce AlphaPose's numbers -- which is why the config_id travels with
+    # the result into the manifest and every downstream record, rather than
+    # both backends pretending to be the same thing.
+    backend = args.pose_backend
+    if backend == "auto":
+        checkpoint = ROOT / "models/alphapose/fast_421_res152_256x192.pth"
+        backend = "alphapose" if checkpoint.exists() else "rtmlib"
+        if backend == "rtmlib":
+            print(f"  pose: no AlphaPose checkpoint at {checkpoint}; "
+                  f"falling back to rtmlib (a different model, recorded as such)")
+
+    if backend == "alphapose":
+        config_id = "alphapose_crowd_baseline"
+        pose_runner = ps.alphapose_runner(
+            config_id,
+            str(ROOT / "models/alphapose/256x192_res152_lr1e-3_1x-duc.yaml"),
+            str(ROOT / "models/alphapose/fast_421_res152_256x192.pth"),
+            frame_reader=pose_reader, device=args.pose_device)
+    else:
+        config_id = args.rtmlib_config
+        pose_runner = ps.rtmlib_runner(
+            config_id, frame_reader=pose_reader,
+            device="cuda" if args.pose_device == "cuda" else "cpu")
+
+    pose_result = ps.run(pose_rows, pose_runner, config_id, profile_doc)
+    print(f"  pose: {pose_result.state} via {config_id} "
           f"({len(pose_result.observations)} observations)")
 
     # ----------------------------------------- head orientation + samples --
@@ -206,7 +243,7 @@ def main() -> int:
         source = by_row.get(row.get("pose_row_id"))
         track_id = getattr(source, "track_id", None)
         head = hp.estimate(joints, pose_row_id=row.get("pose_row_id", ""),
-                           config_id="alphapose_crowd_baseline",
+                           config_id=config_id,
                            pts_ms=float(row["pts_ms"]),
                            seat_state=row.get("seat_state", "unattributed"),
                            track_id=track_id)

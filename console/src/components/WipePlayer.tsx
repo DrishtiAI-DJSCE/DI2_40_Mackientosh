@@ -93,6 +93,7 @@ export function WipePlayer({
   onTimeUpdate,
   seekToMs,
   below,
+  inset,
 }: {
   videoSrc: string;
   overlay: OverlayBundle | null;
@@ -111,6 +112,10 @@ export function WipePlayer({
    *  belongs to the video, so it is not allowed to drift into a separate
    *  section further down the page. */
   below?: React.ReactNode;
+  /** Rendered over the picture, bottom-right: the close-up of whatever the
+   *  reviewer selected, so the wide frame and the evidence for it are in one
+   *  glance instead of two scroll positions. */
+  inset?: React.ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -510,6 +515,8 @@ export function WipePlayer({
           onPause={() => setPlaying(false)}
         />
         <canvas ref={canvasRef} />
+
+        {inset}
 
         <span className="wipe__tag wipe__tag--l">raw</span>
         <span className="wipe__tag wipe__tag--r">annotated</span>

@@ -251,6 +251,7 @@ export default {
         describe: env.CEREBRAS_API_KEY
           ? (payload) => describeImage(env.CEREBRAS_API_KEY, payload)
           : null,
+        agentToken: env.AGENT_TOKEN || null,
       });
 
       let body;

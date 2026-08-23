@@ -10,6 +10,7 @@ import {
 } from "../components/WipePlayer";
 import { StateChip } from "../components/StateChip";
 import { FindingsTable } from "../components/FindingsTable";
+import { Spotlight } from "../components/Spotlight";
 import { subjectName, timecode } from "../lib/format";
 import { flagLabel } from "../lib/humanize";
 import "./VideoScreen.css";
@@ -178,6 +179,12 @@ export function VideoScreen({
   const [nowMs, setNowMs] = useState(0);
   const [seek, setSeek] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // What the reviewer selected from the findings table, shown as a close-up
+  // over the frame. Null until they pick something -- opening with a spotlight
+  // would assert that one of the rows matters more than the others.
+  const [spot, setSpot] = useState<
+    { track_id: number; label: string; standing: string } | null
+  >(null);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
 
   useEffect(() => {
@@ -300,6 +307,19 @@ export function VideoScreen({
             onlyTracks={drawAll ? null : ofInterest}
             onTimeUpdate={setNowMs}
             seekToMs={seek}
+            inset={
+              spot ? (
+                <Spotlight
+                  trackId={spot.track_id}
+                  crop={crops[String(spot.track_id)]}
+                  cropBase={cropBase}
+                  label={spot.label}
+                  standing={spot.standing}
+                  onClose={() => setSpot(null)}
+                  onSeek={setSeek}
+                />
+              ) : null
+            }
             below={
               <div className="ribbon">
                 <div
@@ -399,9 +419,10 @@ export function VideoScreen({
           overlay={overlay}
           decisions={decisions}
           focus={focus}
-          onSeek={(ms, trackId) => {
+          onSeek={(ms, trackId, label, standing) => {
             setSeek(ms);
             setFocus(trackId);
+            setSpot({ track_id: trackId, label, standing });
           }}
         />
 

@@ -57,7 +57,7 @@ export function FindingsTable({
   cropBase: string;
   overlay: OverlayBundle | null;
   decisions: Record<number, Decision>;
-  onSeek: (ms: number, trackId: number) => void;
+  onSeek: (ms: number, trackId: number, label: string, standing: string) => void;
   focus: number | null;
 }) {
   const [showAttention, setShowAttention] = useState(true);
@@ -209,13 +209,13 @@ export function FindingsTable({
               <tr
                 key={r.key}
                 className={`is-${r.tier} ${focus === r.track_id ? "is-on" : ""}`}
-                onClick={() => onSeek(r.at_ms, r.track_id)}
+                onClick={() => onSeek(r.at_ms, r.track_id, r.what, STANDING[r.tier])}
                 tabIndex={0}
                 role="button"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    onSeek(r.at_ms, r.track_id);
+                    onSeek(r.at_ms, r.track_id, r.what, STANDING[r.tier]);
                   }
                 }}
               >

@@ -244,3 +244,4 @@ secrets.json
 # every dev run and `.wrangler/state` is the local D1/R2 emulator's data --
 # neither is source, and the state directory is another machine's database.
 /console/.wrangler/
+console/.agent-token.txt
