@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Bundle } from "../types";
 import type { CropManifest, Decision } from "../review";
 import type { OverlayBundle } from "../overlay";
-import { attentionFindings, DIRECTION_LABEL } from "../lib/attention";
+import { deviationEpisodes, AWAY_LABEL } from "../lib/deviation";
 import { subjectName, timecode } from "../lib/format";
 import { classLabel } from "../lib/humanize";
 import "./FindingsTable.css";
@@ -129,27 +129,31 @@ export function FindingsTable({
     );
   }, [bundle.tracks, crops, decisions]);
 
+  const deviation = useMemo(() => deviationEpisodes(overlay), [overlay]);
+
   const attention = useMemo(() => {
     const live = new Set(
       bundle.tracks
         .filter((t) => decisions[t.track_id] !== "human_dismissed")
         .map((t) => t.track_id),
     );
-    return attentionFindings(overlay).filter((a) => live.has(a.track_id));
-  }, [overlay, bundle.tracks, decisions]);
+    return deviation.episodes.filter((e) => live.has(e.track_id));
+  }, [deviation, bundle.tracks, decisions]);
 
   const attentionRows = useMemo<Row[]>(
     () =>
-      attention.map((a, i) => ({
-        key: `a${a.track_id}-${i}`,
-        track_id: a.track_id,
-        at_ms: a.from_ms,
+      attention.map((e, i) => ({
+        key: `a${e.track_id}-${i}`,
+        track_id: e.track_id,
+        // The peak, not the start. The first frame of a turn is a head
+        // halfway round; the reviewer wants the frame where it got furthest.
+        at_ms: e.peak_ms,
         tier: "attention" as const,
         what:
-          a.kind === "sustained"
-            ? `looked ${DIRECTION_LABEL[a.direction]} and held it`
-            : `kept looking ${DIRECTION_LABEL[a.direction]}`,
-        backing: a.evidence,
+          e.with_track != null
+            ? `turned ${AWAY_LABEL[e.away]}, with #${e.with_track}`
+            : `turned ${AWAY_LABEL[e.away]}`,
+        backing: e.evidence,
       })),
     [attention],
   );
@@ -174,8 +178,9 @@ export function FindingsTable({
         <h3>What was caught</h3>
         <p className="ft__none">
           Nothing in this recording cleared the bar — no object was backed by
-          the second model, nobody has been confirmed by a reviewer, and no
-          sustained or repeated look away was measured. That is not the same as
+          the second model, nobody has been confirmed by a reviewer, and nobody
+          turned away from their own resting position for long enough to
+          measure. That is not the same as
           &ldquo;nothing happened&rdquo;.
         </p>
       </section>
@@ -188,7 +193,7 @@ export function FindingsTable({
         What was caught
         <span className="mono">
           {counts.human} confirmed · {counts.second_model} backed by SAM 3 ·{" "}
-          {counts.proposed} proposed · {counts.attention} looking away
+          {counts.proposed} proposed · {counts.attention} turned away
         </span>
       </h3>
 
@@ -259,14 +264,28 @@ export function FindingsTable({
             checked={showAttention}
             onChange={(e) => setShowAttention(e.target.checked)}
           />
-          Show where people were looking ({counts.attention})
+          Show people turning away ({counts.attention})
         </label>
         <p className="ft__note">
-          Click a row to jump the video there. <b>Looking away is not a
-          finding</b> — it is measured on its own criteria (a turn held{" "}
-          {3}s, or {4} turns inside {20}s) and can never send someone to review
-          by itself. Head direction is four-way and coarse; it is not gaze.
+          Click a row to jump the video there. <b>Turning away is not a
+          finding</b> — it is measured on its own criteria and can never send
+          someone to review by itself. A turn is counted only where the head
+          leaves <i>that person&rsquo;s own</i> resting position by 3× their own
+          spread for at least 1.2s, so a chair that permanently faces sideways
+          scores zero. Two people turning within the same seconds are marked as
+          a pair. This is head-versus-shoulders, not gaze.
         </p>
+        {/* An abstention is not a clean result, so it is stated rather than
+            left as an absence of rows. */}
+        {deviation.noBaseline.length > 0 && (
+          <p className="ft__note">
+            <b>Not judged for turning: {deviation.noBaseline.length} of{" "}
+            {deviation.noBaseline.length + deviation.baselines.size} people.</b>{" "}
+            They were on screen too briefly, or too small, to establish a
+            resting position to compare against. That is not the same as
+            &ldquo;they never turned&rdquo;.
+          </p>
+        )}
       </div>
 
       {zoom && (
