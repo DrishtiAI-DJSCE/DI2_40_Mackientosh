@@ -20,7 +20,7 @@
  * would blow the CPU limit on the first frame. This Worker serves what a run
  * already produced.
  */
-import { makeRouter } from "../server/routes.js";
+import { makeRouter, slug } from "../server/routes.js";
 
 /** D1 speaks the same SQL as better-sqlite3; only the call shape differs. */
 function d1Store(db) {
@@ -176,6 +176,71 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
+
+    /* ---------------------------------------------------------- uploads */
+
+    // Handled before the shared router, for the same reason the Node server
+    // mounts it before its JSON body parser: the body is a recording, and the
+    // router's job is to work with parsed JSON. Streamed straight into R2 --
+    // a Worker has ~128 MB of memory and a hall recording is larger than that,
+    // so buffering it would fail on exactly the files that matter most.
+    if (request.method === "PUT" && pathname.startsWith("/api/uploads/")) {
+      if (!env.ASSETS_BUCKET) {
+        return Response.json(
+          { error: "No R2 bucket is bound; uploads have nowhere to go." },
+          { status: 503 },
+        );
+      }
+      const parts = pathname.split("/").filter(Boolean); // api uploads centre file
+      const centreId = parts[2];
+      const filename = (parts[3] ?? "").replace(/[^\w.\-]/g, "_");
+      if (!centreId || !/\.(mp4|mkv|webm)$/i.test(filename)) {
+        return Response.json(
+          { error: "Only mp4, mkv or webm, filed under a centre." },
+          { status: 400 },
+        );
+      }
+
+      const store = d1Store(env.DB);
+      const centre = await store.get("SELECT id FROM centres WHERE id = ?", [
+        centreId,
+      ]);
+      if (!centre) {
+        return Response.json({ error: "No such centre." }, { status: 404 });
+      }
+      if (!request.body) {
+        return Response.json({ error: "Empty upload." }, { status: 400 });
+      }
+
+      const object = await env.ASSETS_BUCKET.put(`media/${filename}`, request.body, {
+        httpMetadata: {
+          contentType: request.headers.get("content-type") || "video/mp4",
+        },
+      });
+
+      const name = url.searchParams.get("name") || filename;
+      const taken = new Set(
+        (await store.all("SELECT id FROM videos")).map((r) => r.id),
+      );
+      const id = slug(name, taken);
+      await store.run(
+        `INSERT INTO videos (id, centre_id, name, media_url, created_utc)
+         VALUES (?,?,?,?,?)`,
+        [id, centreId, name, `/media/${filename}`, new Date().toISOString()],
+      );
+
+      return Response.json(
+        {
+          video_id: id,
+          media_url: `/media/${filename}`,
+          bytes: object?.size ?? 0,
+          // Uploading and running are separate on purpose: a recording can be
+          // attached now and processed when the GPU is free.
+          next: `POST /api/videos/${id}/process`,
+        },
+        { status: 201 },
+      );
+    }
 
     /* ------------------------------------------------------------- API */
 

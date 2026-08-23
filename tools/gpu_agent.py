@@ -45,21 +45,45 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
-# The stages this agent runs, in order, with the share of the progress bar each
-# one gets. The weights are rough wall-clock proportions from the 1512 run --
-# pose and object detection dominate, and a bar that moved linearly across
-# stages would sit at 40% for most of the job.
-STAGES: list[tuple[str, float]] = [
-    ("01_ingest", 0.04),
-    ("07_tracking", 0.10),
-    ("08_pose", 0.34),
-    ("09_object", 0.22),
-    ("14_person_timeline", 0.14),
-    ("14b_chit", 0.05),
-    ("14c_gates", 0.02),
-    ("14d_sam3", 0.05),
-    ("15_evidence", 0.04),
-]
+# The stages this agent runs, in order, as (label, argv-builder, share of the
+# progress bar).
+#
+# These are the tools that actually exist and actually produced the committed
+# runs. An earlier version of this file invoked `python -m pipeline.run --stage
+# <name>`, which is a module that does not exist -- it would have failed on the
+# first job with a ModuleNotFoundError. There is no single stage-dispatch entry
+# point in this repository; the runs are a chain of four tools plus the three
+# bundlers, and that chain is written out here rather than inferred.
+#
+# The weights are rough wall-clock proportions from the 1512 run. Stage 14 does
+# person detection, tracking and pose in one pass and dominates everything
+# else; SAM 3 is network-bound and comes third. A bar that advanced linearly
+# across seven stages would sit near 15% for most of a job.
+def _stages(run_dir, source):
+    """The pipeline chain for one recording, as argv lists."""
+    py = sys.executable
+    return [
+        # Stage 14: sampling, person detection, IoU tracking, AlphaPose, and
+        # D-FINE objects associated to wrists. Everything on the GPU.
+        ("14_person_timeline", 0.62,
+         [py, "tools/run_person_timeline.py", str(source), "--run", str(run_dir),
+          "--pose-device", "cuda"]),
+        # 14b: the Roboflow chit detector over the hand crops. Online.
+        ("14b_chit_detector", 0.10,
+         [py, "tools/attach_chit_detections.py", str(source), "--run", str(run_dir)]),
+        # 14c: geometric gates. Cheap, local, and it is what keeps SAM 3 from
+        # being asked about every keyboard in the hall.
+        ("14c_gates", 0.02,
+         [py, "tools/score_chit_evidence.py", "--run", str(run_dir)]),
+        # 14d: SAM 3 as referee, episode-sampled. Online, and the slowest thing
+        # that is not the GPU.
+        ("14d_sam3_adjudication", 0.18,
+         [py, "tools/adjudicate_with_sam3.py", str(source), "--run", str(run_dir),
+          "--max-per-episode", "3", "--save-annotated", "250"]),
+        # 15: evidence records and the fused per-person outcomes.
+        ("15_evidence_records", 0.08,
+         [py, "tools/build_evidence_records.py", "--run", str(run_dir)]),
+    ]
 
 
 class Console:
@@ -131,7 +155,7 @@ def process(console: Console, job: dict, video: dict, *, keep: bool) -> str:
     """Take one job from claimed to a finished run key."""
     job_id = job["id"]
     run_key = f"job{job_id}"
-    run_dir = REPO / "artifacts" / "runs" / f"job{job_id}" / "video"
+    run_dir = REPO / "artifacts" / "runs" / "jobs" / run_key
 
     source = console.download(
         video["media_url"],
@@ -140,17 +164,10 @@ def process(console: Console, job: dict, video: dict, *, keep: bool) -> str:
     print(f"  downloaded {source} ({source.stat().st_size / 1e6:.1f} MB)", flush=True)
 
     done = 0.0
-    for stage, weight in STAGES:
+    for stage, weight, argv in _stages(run_dir, source):
         console.report(job_id, "running", stage=stage, progress=round(done, 3))
         print(f"[{done:5.0%}] {stage}", flush=True)
-
-        # The pipeline is driven through its own runner so this agent does not
-        # duplicate stage wiring; see pipeline/ for what each stage does.
-        run_stage(
-            [sys.executable, "-m", "pipeline.run",
-             "--stage", stage, "--run", str(run_dir), "--video", str(source)],
-            stage,
-        )
+        run_stage(argv, stage)
         done += weight
 
     # The console reads three derived artifacts, not the run directory itself.

@@ -110,3 +110,131 @@
   color: var(--slate-2);
   max-width: 46rem;
 }
+
+/* Wide table on a narrow screen scrolls inside its own box; the page never
+   scrolls sideways. */
+.ft__scroll {
+  overflow-x: auto;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+
+.ft table {
+  min-width: 44rem;
+}
+
+.ft__chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.2em 0.45em;
+  border-radius: 3px;
+  white-space: nowrap;
+  background: var(--surface-2);
+  color: var(--slate);
+}
+
+.ft tr.is-human .ft__chip {
+  background: var(--s-confirm-bg);
+  color: var(--s-confirm);
+}
+
+.ft tr.is-second_model .ft__chip {
+  background: var(--s-review-bg);
+  color: var(--s-review);
+}
+
+.ft tr.is-attention .ft__chip {
+  background: var(--s-abstain-bg);
+  color: var(--s-abstain);
+}
+
+.ft tr.is-attention td:first-child {
+  border-left-color: var(--lane-orientation);
+}
+
+/* The reviewer's own confirmations no longer say so in prose -- the chip and
+   the rail carry it. */
+.ft tr.is-human td:nth-child(4),
+.ft tr.is-second_model td:nth-child(4) {
+  font-weight: 600;
+}
+
+.ft__thumb {
+  display: block;
+  width: 3.4rem;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+  cursor: zoom-in;
+}
+
+.ft__thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.ft__thumb:hover {
+  border-color: var(--accent);
+}
+
+.ft__na {
+  font-size: 0.56rem;
+  color: var(--slate-2);
+  white-space: nowrap;
+}
+
+.ft__foot {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ft__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  color: var(--slate);
+  cursor: pointer;
+}
+
+.ft__zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(6px);
+  cursor: zoom-out;
+}
+
+.ft__zoom img {
+  max-width: min(92vw, 60rem);
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.ft__zoom button {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 7px;
+  background: transparent;
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.5em 1em;
+  cursor: pointer;
+}

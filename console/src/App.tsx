@@ -242,6 +242,7 @@ export default function App() {
             <VideoScreen
               bundle={bundle}
               crops={crops}
+              cropBase={video!.crops ?? ""}
               videoSrc={video!.video ?? ""}
               overlaySrc={video!.overlay ?? ""}
               decisions={plain}

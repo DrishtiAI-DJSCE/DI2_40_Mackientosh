@@ -159,12 +159,14 @@ function buildKinds(
 export function VideoScreen({
   bundle,
   crops,
+  cropBase,
   videoSrc,
   overlaySrc,
   decisions,
 }: {
   bundle: Bundle;
   crops: CropManifest;
+  cropBase: string;
   videoSrc: string;
   overlaySrc: string;
   decisions: Record<number, Decision>;
@@ -393,6 +395,8 @@ export function VideoScreen({
         <FindingsTable
           bundle={bundle}
           crops={crops}
+          cropBase={cropBase}
+          overlay={overlay}
           decisions={decisions}
           focus={focus}
           onSeek={(ms, trackId) => {

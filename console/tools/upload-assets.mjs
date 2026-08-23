@@ -24,6 +24,11 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
+// The locally installed binary, not `npx`. npx re-resolves the package on
+// every invocation, and at 2,076 files that dominated the wall clock.
+const WRANGLER = new URL("../node_modules/.bin/wrangler.cmd", import.meta.url)
+  .pathname.replace(/^\/([A-Za-z]:)/, "$1");
+
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const value = (name) => {
@@ -43,7 +48,7 @@ const ONLY = value("--only");
 // Measured at 6 workers: 18 of 119 objects failed, and the failures were
 // scattered, so a partial upload would have looked like a handful of
 // mysteriously missing crops rather than an obvious error.
-const CONCURRENCY = LOCAL ? 1 : Number(value("--concurrency") ?? 6);
+const CONCURRENCY = LOCAL ? 1 : Number(value("--concurrency") ?? 14);
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const PUBLIC = join(ROOT, "public");
@@ -95,7 +100,6 @@ async function worker() {
     const file = queue.pop();
     if (!file) return;
     const argv = [
-      "wrangler",
       "r2",
       "object",
       "put",
@@ -110,7 +114,7 @@ async function worker() {
     let error = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        await run("npx", argv, { shell: true, maxBuffer: 1 << 22 });
+        await run(WRANGLER, argv, { shell: true, maxBuffer: 1 << 22 });
         error = null;
         break;
       } catch (e) {

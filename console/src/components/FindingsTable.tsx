@@ -1,121 +1,182 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Bundle } from "../types";
 import type { CropManifest, Decision } from "../review";
+import type { OverlayBundle } from "../overlay";
+import { attentionFindings, DIRECTION_LABEL } from "../lib/attention";
 import { subjectName, timecode } from "../lib/format";
-import { classLabel, verdictLabel } from "../lib/humanize";
+import { classLabel } from "../lib/humanize";
 import "./FindingsTable.css";
 
-export interface Finding {
+type Tier = "human" | "second_model" | "proposed" | "attention";
+
+interface Row {
+  key: string;
   track_id: number;
   at_ms: number;
-  /** What kind of claim this is. The three tiers are not interchangeable and
-   *  the table never merges them into one "detections" number. */
-  tier: "human" | "second_model" | "proposed";
+  tier: Tier;
   what: string;
-  detail: string;
+  /** What backs the claim. Never a restatement of `what`. */
+  backing: string;
+  /** SAM 3's own annotated crop for this instant, when it exists. */
+  sam3?: string;
 }
 
+/** Short standing chip. The tier is carried by a word and a colour, not by a
+ *  sentence in the middle of the row. */
+const STANDING: Record<Tier, string> = {
+  human: "Confirmed",
+  second_model: "SAM 3",
+  proposed: "Detector",
+  attention: "Observed",
+};
+
 /**
- * What was actually caught, in one list, newest question first.
+ * What was caught, in one list, with the video one click away.
  *
- * The dashboard counts states; this answers the different question a reviewer
- * asks in front of the video -- *show me the ones that matter and take me
- * there*. Every row seeks the player.
+ * Four tiers, kept apart on purpose. Collapsing them into a single
+ * "detections" count is exactly what the output contract exists to prevent: a
+ * proposal is not a finding, a second model agreeing is not a person having
+ * cheated, and where someone was looking is not either of those.
  *
- * The tiers are kept visually distinct on purpose:
- *
- *   confirmed by a reviewer   a human looked and said yes
- *   confirmed by SAM 3        a second model backed the object claim
- *   proposed                  a detector fired and nothing has backed it
- *
- * Collapsing those into one list of "detections" would be the exact failure
- * the output contract exists to prevent: a proposal is not a finding, and a
- * second model agreeing is not a person having cheated.
+ * The attention rows are a **different condition with different criteria** --
+ * duration and repetition, not object geometry -- and they can never route
+ * someone to review on their own. The table says so under it rather than
+ * letting the shared layout imply equivalence.
  */
 export function FindingsTable({
   bundle,
   crops,
+  cropBase,
+  overlay,
   decisions,
   onSeek,
   focus,
 }: {
   bundle: Bundle;
   crops: CropManifest;
+  cropBase: string;
+  overlay: OverlayBundle | null;
   decisions: Record<number, Decision>;
   onSeek: (ms: number, trackId: number) => void;
   focus: number | null;
 }) {
-  const findings = useMemo<Finding[]>(() => {
-    const rows: Finding[] = [];
+  const [showAttention, setShowAttention] = useState(true);
+  const [zoom, setZoom] = useState<string | null>(null);
+
+  const objectRows = useMemo<Row[]>(() => {
+    const rows: Row[] = [];
 
     for (const track of bundle.tracks) {
       const crop = crops[String(track.track_id)];
       const decision = decisions[track.track_id];
+      if (decision === "human_dismissed") continue;
 
-      // A reviewer's yes outranks everything. It is also the only row here
-      // that is a statement about a person rather than about pixels.
+      const sam3 = crop?.sam3_crop ? `sam3/${crop.sam3_crop}` : undefined;
+
       if (decision === "human_confirmed") {
         rows.push({
+          key: `h${track.track_id}`,
           track_id: track.track_id,
           at_ms: crop?.key_pts_ms ?? track.first_seen_ms ?? 0,
           tier: "human",
-          what: `${classLabel(crop?.key_class)} — confirmed by a reviewer`,
-          detail: crop?.key_verdict
-            ? `Second model: ${verdictLabel(crop.key_verdict)}`
-            : "Confirmed from the review queue",
+          what: `${classLabel(crop?.key_class)} at the hand`,
+          // The reviewer's own verdict is the standing; the backing is what
+          // the machine had to say, which is the useful extra fact.
+          backing: crop?.key_supported
+            ? `SAM 3 agreed · ${crop.supported_frames} of ${crop.sightings} frames`
+            : "detector proposal only",
+          sam3,
         });
         continue;
       }
-      // A dismissal is a decision too: it takes the row out, it does not
-      // demote it to a proposal.
-      if (decision === "human_dismissed") continue;
 
       if (crop?.key_supported) {
         rows.push({
+          key: `s${track.track_id}`,
           track_id: track.track_id,
           at_ms: crop.key_pts_ms,
           tier: "second_model",
+          // `what` names the object; `backing` counts the evidence. It used to
+          // repeat the verdict here -- "phone at the hand / Second model
+          // called it a phone" -- which is the same sentence twice and reads
+          // as though two different things were established.
           what: `${classLabel(crop.key_class)} at the hand`,
-          detail: `${verdictLabel(crop.key_verdict)} · ${crop.supported_frames} frame${
-            crop.supported_frames === 1 ? "" : "s"
-          } backed`,
+          backing: `${crop.supported_frames} of ${crop.sightings} frames`,
+          sam3,
         });
         continue;
       }
 
       if (track.state === "review_candidate" && crop) {
         rows.push({
+          key: `p${track.track_id}`,
           track_id: track.track_id,
           at_ms: crop.key_pts_ms,
           tier: "proposed",
           what: `possible ${classLabel(crop.key_class)}`,
-          detail: crop.key_verdict
-            ? verdictLabel(crop.key_verdict)
-            : "not sent to the second model",
+          backing:
+            crop.key_confidence != null
+              ? `${(crop.key_confidence * 100).toFixed(0)}% · not backed`
+              : "not backed",
+          sam3,
         });
       }
     }
 
-    const rank = { human: 0, second_model: 1, proposed: 2 };
+    const rank = { human: 0, second_model: 1, proposed: 2, attention: 3 };
     return rows.sort(
       (a, b) => rank[a.tier] - rank[b.tier] || a.at_ms - b.at_ms,
     );
   }, [bundle.tracks, crops, decisions]);
 
+  const attention = useMemo(() => {
+    const live = new Set(
+      bundle.tracks
+        .filter((t) => decisions[t.track_id] !== "human_dismissed")
+        .map((t) => t.track_id),
+    );
+    return attentionFindings(overlay).filter((a) => live.has(a.track_id));
+  }, [overlay, bundle.tracks, decisions]);
+
+  const attentionRows = useMemo<Row[]>(
+    () =>
+      attention.map((a, i) => ({
+        key: `a${a.track_id}-${i}`,
+        track_id: a.track_id,
+        at_ms: a.from_ms,
+        tier: "attention" as const,
+        what:
+          a.kind === "sustained"
+            ? `looked ${DIRECTION_LABEL[a.direction]} and held it`
+            : `kept looking ${DIRECTION_LABEL[a.direction]}`,
+        backing: a.evidence,
+      })),
+    [attention],
+  );
+
+  const rows = showAttention ? [...objectRows, ...attentionRows] : objectRows;
+
   const counts = {
-    human: findings.filter((f) => f.tier === "human").length,
-    second_model: findings.filter((f) => f.tier === "second_model").length,
-    proposed: findings.filter((f) => f.tier === "proposed").length,
+    human: objectRows.filter((r) => r.tier === "human").length,
+    second_model: objectRows.filter((r) => r.tier === "second_model").length,
+    proposed: objectRows.filter((r) => r.tier === "proposed").length,
+    attention: attentionRows.length,
   };
 
-  if (!findings.length) {
+  const nameOf = (trackId: number) => {
+    const t = bundle.tracks.find((x) => x.track_id === trackId);
+    return subjectName(trackId, t?.seat ?? null, t?.seat_state ?? null).name;
+  };
+
+  if (!rows.length) {
     return (
       <section className="ft">
         <h3>What was caught</h3>
         <p className="ft__none">
-          Nothing in this recording has been backed by the second model or
-          confirmed by a reviewer. That is not the same as
-          &ldquo;nothing happened&rdquo; — it means nothing cleared the bar.
+          Nothing in this recording cleared the bar — no object was backed by
+          the second model, nobody has been confirmed by a reviewer, and no
+          sustained or repeated look away was measured. That is not the same as
+          &ldquo;nothing happened&rdquo;.
         </p>
       </section>
     );
@@ -126,56 +187,101 @@ export function FindingsTable({
       <h3>
         What was caught
         <span className="mono">
-          {counts.human} confirmed by a reviewer · {counts.second_model} backed
-          by the second model · {counts.proposed} proposed only
+          {counts.human} confirmed · {counts.second_model} backed by SAM 3 ·{" "}
+          {counts.proposed} proposed · {counts.attention} looking away
         </span>
       </h3>
 
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">At</th>
-            <th scope="col">Who</th>
-            <th scope="col">What</th>
-            <th scope="col">Standing</th>
-          </tr>
-        </thead>
-        <tbody>
-          {findings.map((f) => {
-            const track = bundle.tracks.find((t) => t.track_id === f.track_id);
-            const subject = subjectName(
-              f.track_id,
-              track?.seat ?? null,
-              track?.seat_state ?? null,
-            );
-            return (
+      <div className="ft__scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">At</th>
+              <th scope="col">Standing</th>
+              <th scope="col">Who</th>
+              <th scope="col">What</th>
+              <th scope="col">Backing</th>
+              <th scope="col">SAM 3</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
               <tr
-                key={`${f.tier}-${f.track_id}`}
-                className={`is-${f.tier} ${focus === f.track_id ? "is-on" : ""}`}
-                onClick={() => onSeek(f.at_ms, f.track_id)}
+                key={r.key}
+                className={`is-${r.tier} ${focus === r.track_id ? "is-on" : ""}`}
+                onClick={() => onSeek(r.at_ms, r.track_id)}
                 tabIndex={0}
                 role="button"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    onSeek(f.at_ms, f.track_id);
+                    onSeek(r.at_ms, r.track_id);
                   }
                 }}
               >
-                <td className="mono">{timecode(f.at_ms)}</td>
-                <td>{subject.name}</td>
-                <td>{f.what}</td>
-                <td className="ft__detail">{f.detail}</td>
+                <td className="mono">{timecode(r.at_ms)}</td>
+                <td>
+                  <span className="ft__chip">{STANDING[r.tier]}</span>
+                </td>
+                <td>{nameOf(r.track_id)}</td>
+                <td>{r.what}</td>
+                <td className="ft__detail">{r.backing}</td>
+                <td>
+                  {/* SAM 3's own segmentation for that instant. It exists only
+                      where the referee was actually called, so an empty cell
+                      means "not adjudicated", not "found nothing". */}
+                  {r.sam3 ? (
+                    <button
+                      type="button"
+                      className="ft__thumb"
+                      title="What SAM 3 looked at"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setZoom(`${cropBase}/${r.sam3}`);
+                      }}
+                    >
+                      <img src={`${cropBase}/${r.sam3}`} alt="SAM 3 segmentation" />
+                    </button>
+                  ) : (
+                    <span className="ft__na mono">not adjudicated</span>
+                  )}
+                </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <p className="ft__note">
-        Click a row to jump the video there. A row backed by the second model is
-        a machine agreeing with a machine — it is still a question for a human,
-        not a verdict.
-      </p>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="ft__foot">
+        <label className="ft__toggle">
+          <input
+            type="checkbox"
+            checked={showAttention}
+            onChange={(e) => setShowAttention(e.target.checked)}
+          />
+          Show where people were looking ({counts.attention})
+        </label>
+        <p className="ft__note">
+          Click a row to jump the video there. <b>Looking away is not a
+          finding</b> — it is measured on its own criteria (a turn held{" "}
+          {3}s, or {4} turns inside {20}s) and can never send someone to review
+          by itself. Head direction is four-way and coarse; it is not gaze.
+        </p>
+      </div>
+
+      {zoom && (
+        <div
+          className="ft__zoom"
+          role="dialog"
+          aria-label="SAM 3 segmentation"
+          onClick={() => setZoom(null)}
+        >
+          <img src={zoom} alt="SAM 3 segmentation, enlarged" />
+          <button type="button" onClick={() => setZoom(null)}>
+            Close
+          </button>
+        </div>
+      )}
     </section>
   );
 }

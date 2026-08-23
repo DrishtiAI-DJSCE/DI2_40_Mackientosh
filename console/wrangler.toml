@@ -28,14 +28,9 @@ database_id = "d298a37d-c93b-4a74-acdc-950fa51542f1"
 
 # Recordings, run bundles and review crops: ~105 MB of derived bytes that do
 # not belong in git or in a Worker script.
-# Uncomment once R2 is enabled for the account (dashboard -> R2 -> enable;
-# it needs a card on file even though this stays inside the free allowance)
-# and the bucket exists: `wrangler r2 bucket create drishti-runs`.
-# Until then the Worker answers /media, /data and /crops with a 503 that names
-# this step, which is more useful than a 404.
-# [[r2_buckets]]
-# binding = "ASSETS_BUCKET"
-# bucket_name = "drishti-runs"
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "drishti-runs"
 
 [observability]
 enabled = true
