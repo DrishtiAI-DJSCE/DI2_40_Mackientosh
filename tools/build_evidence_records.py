@@ -30,6 +30,9 @@ already been bitten by once, on VFR timestamps.
 """
 from __future__ import annotations
 
+import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import argparse
 import collections
 import json

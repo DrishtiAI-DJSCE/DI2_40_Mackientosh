@@ -1,6 +1,6 @@
 {
-  "run_id": "cam3_0818_5min",
-  "updated_utc": "2026-08-23T03:27:48Z",
+  "run_id": "cam3_0818_8min",
+  "updated_utc": "2026-08-23T04:03:44Z",
   "stages": [
     {
       "stage": "source",
@@ -146,13 +146,13 @@
       "stage": "14_person_timeline",
       "state": "complete",
       "started_utc": null,
-      "finished_utc": "2026-08-23T03:27:48Z",
-      "reason": "continuous 2.0 Hz over the whole recording; 24 people profiled",
+      "finished_utc": "2026-08-23T04:03:44Z",
+      "reason": "continuous 2.0 Hz over the whole recording; 25 people profiled",
       "covered_ms": null,
       "total_ms": null,
       "counts": {
-        "sampled_rows": 601,
-        "people": 24
+        "sampled_rows": 961,
+        "people": 25
       }
     }
   ]
