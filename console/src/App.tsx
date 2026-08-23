@@ -4,6 +4,7 @@ import type { CropManifest, Decision, ProjectRef } from "./review";
 import { api, type Assets, type DecisionRow } from "./api";
 import { findVideo, firstProcessed, firstVideo } from "./projects";
 import { Library } from "./components/Library";
+import { UploadPanel } from "./components/UploadPanel";
 import { Dashboard } from "./screens/Dashboard";
 import { ReviewScreen } from "./screens/ReviewScreen";
 import { DismissedScreen } from "./screens/DismissedScreen";
@@ -131,6 +132,17 @@ export default function App() {
     [decisions],
   );
 
+  const uploadPanel = (
+    <UploadPanel
+      projects={projects}
+      onChanged={setProjects}
+      onOpen={(id) => {
+        setVideoId(id);
+        setScreen("dashboard");
+      }}
+    />
+  );
+
   return (
     <div className="app">
       <Library
@@ -177,11 +189,20 @@ export default function App() {
           {error && <p className="state state--err">{error}</p>}
 
           {booted && projects.length === 0 && !error && (
-            <p className="state">
-              Nothing here yet. Create a project in the sidebar — an exam —
-              then a centre inside it, then attach the recordings from each
-              hall.
-            </p>
+            <div className="state state--empty">
+              <p>
+                Nothing here yet. Add a recording below — you can create the
+                project and centre it belongs to at the same time.
+              </p>
+              {uploadPanel}
+            </div>
+          )}
+
+          {/* A console with a hierarchy but no run to show still needs the
+              way in. Without this the panel would only appear once something
+              had already been processed. */}
+          {booted && projects.length > 0 && !bundle && !error && (
+            <div className="state state--empty">{uploadPanel}</div>
           )}
 
           {video && !video.processed && (
@@ -203,6 +224,7 @@ export default function App() {
               video={video!}
               decisions={plain}
               onReview={() => setScreen("review")}
+              upload={uploadPanel}
             />
           )}
 

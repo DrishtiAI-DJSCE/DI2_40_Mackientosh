@@ -92,6 +92,66 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /**
+   * Send a recording.
+   *
+   * XMLHttpRequest rather than fetch, for one reason: upload progress. A hall
+   * recording is gigabytes, and a control that says nothing for ten minutes is
+   * indistinguishable from one that has silently failed. `fetch` still has no
+   * portable way to observe request-body progress.
+   *
+   * The body is the file itself, not multipart — the server streams it
+   * straight to storage, so wrapping it in a form encoding would only add a
+   * parse step over several gigabytes.
+   */
+  upload(
+    centreId: string,
+    file: File,
+    name: string,
+    onProgress: (fraction: number) => void,
+  ): Promise<{ video_id: string; media_url: string; bytes: number }> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const safe = file.name.replace(/[^\w.\-]/g, "_");
+      xhr.open(
+        "PUT",
+        `/api/uploads/${centreId}/${safe}?name=${encodeURIComponent(name)}`,
+      );
+      xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        let doc: Record<string, unknown> = {};
+        try {
+          doc = JSON.parse(xhr.responseText);
+        } catch {
+          /* fall through to the status check */
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(doc as never);
+        } else {
+          reject(new Error(String(doc.error ?? `HTTP ${xhr.status}`)));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload failed — network error."));
+      xhr.send(file);
+    });
+  },
+
+  /** Queue a run. Returns as soon as the job row exists; the pipeline itself
+   *  takes minutes and reports through the job's state. */
+  process: (videoId: string) =>
+    call<{ job: { id: number; state: string }; note?: string }>(
+      `/api/videos/${videoId}/process`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  job: (id: number) =>
+    call<{ job: { id: number; state: string; stage: string | null; progress: number; error: string | null; run_key: string | null } }>(
+      `/api/jobs/${id}`,
+    ),
+
   describe: (image: string) =>
     call<{
       parsed: {

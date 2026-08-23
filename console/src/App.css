@@ -257,3 +257,25 @@
   border-left: 3px solid var(--s-review);
   color: var(--s-review);
 }
+
+/* The empty-console and no-run states carry the upload panel, so they are a
+   container rather than a paragraph. */
+.state--empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  max-width: 56rem;
+}
+
+.state--empty > p {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
