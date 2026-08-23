@@ -94,3 +94,41 @@ JOIN (
   FROM decisions
   GROUP BY video_id, track_id
 ) last ON last.id = d.id;
+
+-- ---------------------------------------------------------------- jobs --
+--
+-- A processing job, from "a video was uploaded" to "a run exists".
+--
+-- The console never waits for the pipeline. Stages 1-15 are minutes of GPU
+-- work on a short clip and much longer on a real recording; an HTTP request
+-- held open for that is a request that times out somewhere in the middle and
+-- leaves nobody sure whether the work is still running. So `POST /process`
+-- writes a row here, answers 202, and everything after that is this table
+-- changing state.
+--
+-- The GPU box *pulls* work rather than being pushed to. That is deliberate:
+-- pulling needs no inbound connectivity, no port forward and no tunnel, which
+-- matters when the machine sits behind a college NAT. `claimed_by` and
+-- `claim_token` are what stop two agents running the same job twice.
+CREATE TABLE IF NOT EXISTS jobs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id      TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  state         TEXT NOT NULL DEFAULT 'queued'
+                CHECK (state IN ('queued','claimed','running','complete','failed','cancelled')),
+  -- Which pipeline stage is executing, and how far through. Both are reported
+  -- by the agent and are display-only: nothing branches on them.
+  stage         TEXT,
+  progress      REAL NOT NULL DEFAULT 0,
+  -- Set when the job finishes: the run key whose artifacts the console reads.
+  run_key       TEXT,
+  error         TEXT,
+  claimed_by    TEXT,
+  claim_token   TEXT,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  created_utc   TEXT NOT NULL,
+  updated_utc   TEXT NOT NULL,
+  finished_utc  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS jobs_by_state ON jobs(state, id);
+CREATE INDEX IF NOT EXISTS jobs_by_video ON jobs(video_id, id);

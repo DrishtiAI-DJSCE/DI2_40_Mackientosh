@@ -9,6 +9,7 @@ import {
   type Layers,
 } from "../components/WipePlayer";
 import { StateChip } from "../components/StateChip";
+import { FindingsTable } from "../components/FindingsTable";
 import { subjectName, timecode } from "../lib/format";
 import { flagLabel } from "../lib/humanize";
 import "./VideoScreen.css";
@@ -240,6 +241,27 @@ export function VideoScreen({
     [live],
   );
 
+  // Who the overlay draws. Everyone the system said something about, plus
+  // anyone a reviewer has answered for -- not all 236 tracked people, which
+  // put a box on every head in the hall and made a busy run and a quiet one
+  // look identical.
+  const [drawAll, setDrawAll] = useState(false);
+  const ofInterest = useMemo(() => {
+    const ids = new Set<number>();
+    for (const t of live) {
+      const crop = crops[String(t.track_id)];
+      if (
+        crop?.key_supported ||
+        t.state === "review_candidate" ||
+        decisions[t.track_id] === "human_confirmed" ||
+        t.flags.some((f) => f.severity === "high")
+      ) {
+        ids.add(t.track_id);
+      }
+    }
+    return ids;
+  }, [live, crops, decisions]);
+
   const focused = focus === null ? null : people.find((t) => t.track_id === focus);
   const dismissedCount = Object.values(decisions).filter(
     (d) => d === "human_dismissed",
@@ -273,6 +295,7 @@ export function VideoScreen({
             overlay={overlay}
             layers={layers}
             focusTrack={focus}
+            onlyTracks={drawAll ? null : ofInterest}
             onTimeUpdate={setNowMs}
             seekToMs={seek}
             below={
@@ -327,6 +350,28 @@ export function VideoScreen({
         )}
 
         <div className="video__layers">
+          <span className="video__legend mono">Draw</span>
+          <button
+            type="button"
+            className={drawAll ? "" : "is-on"}
+            aria-pressed={!drawAll}
+            onClick={() => setDrawAll(false)}
+            title="Only the people this run said something about"
+          >
+            findings only ({ofInterest.size})
+          </button>
+          <button
+            type="button"
+            className={drawAll ? "is-on" : ""}
+            aria-pressed={drawAll}
+            onClick={() => setDrawAll(true)}
+            title="Every tracked person"
+          >
+            everyone ({live.length})
+          </button>
+        </div>
+
+        <div className="video__layers">
           <span className="video__legend mono">Layers</span>
           {(Object.keys(LAYER_LABEL) as (keyof Layers)[]).map((key) => (
             <button
@@ -344,6 +389,17 @@ export function VideoScreen({
         {!overlay && !error && (
           <p className="video__loading mono">Loading overlay geometry…</p>
         )}
+
+        <FindingsTable
+          bundle={bundle}
+          crops={crops}
+          decisions={decisions}
+          focus={focus}
+          onSeek={(ms, trackId) => {
+            setSeek(ms);
+            setFocus(trackId);
+          }}
+        />
 
         {focused && (
           <section className="video__focus">

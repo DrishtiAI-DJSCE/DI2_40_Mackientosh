@@ -22,5 +22,22 @@ export default defineConfig({
       },
     },
   },
-  build: { outDir: "dist", sourcemap: true },
+  build: {
+    outDir: "dist",
+    sourcemap: true,
+    // Do not copy `public/` into the build.
+    //
+    // `public/` holds the run artifacts -- the recordings, the overlay
+    // bundles and the review crops, ~105 MB of derived bytes. Vite's default
+    // is to copy all of it into `dist/`, which produced a 106 MB build. Two
+    // things broke: it is far past what Cloudflare will accept as Worker
+    // static assets, and because Workers Assets is consulted before the
+    // Worker runs, `/media/...` was answered from that copy instead of from
+    // R2 -- so the Worker's range-request handling never executed and video
+    // seeking silently fell back to whole-file downloads.
+    //
+    // The artifacts are served directly from `public/` by the Node server,
+    // and from R2 by the Worker. Neither path wants them duplicated here.
+    copyPublicDir: false,
+  },
 });
