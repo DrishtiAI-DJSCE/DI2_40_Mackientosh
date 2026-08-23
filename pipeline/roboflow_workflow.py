@@ -118,6 +118,16 @@ class WorkflowResponseError(WorkflowError):
     """A 200 whose body does not match the workflow's declared outputs."""
 
 
+class WorkflowConfigError(WorkflowError):
+    """The workspace or workflow named does not exist for this key.
+
+    Kept apart from every other failure on purpose. This one is fatal for the
+    whole pass -- retrying it, or letting it accumulate in a generic error
+    counter, is how a five-second typo became a four-minute wait and then a
+    negative finding against real people.
+    """
+
+
 @dataclass
 class Config:
     workspace: str = WORKSPACE
@@ -313,10 +323,28 @@ class SegmentationWorkflow:
                     raise WorkflowAuthError(
                         f"{response.status_code} from {self.url}: "
                         f"{response.text[:200]}")
+                # A 404 is a misconfiguration, not a transient failure, and it
+                # must not be allowed to look like one. Measured: an entire
+                # adjudication pass lost 1,682 of 1,774 calls this way, because
+                # ROBOFLOW_WORKSPACE pointed at a workspace the key does not
+                # belong to. Every call 404'd, the counter recorded 1,682
+                # generic errors, the run reported "SAM 3 unavailable", and
+                # fusion turned that into a negative verdict on three people
+                # with a minute of sustained handling between them.
+                #
+                # Retrying it four times with exponential backoff also turned a
+                # five-second configuration error into a four-minute one.
+                if response.status_code == 404:
+                    raise WorkflowConfigError(
+                        f"404 from {self.url}. The workspace or workflow does "
+                        f"not exist for this API key. Check ROBOFLOW_WORKSPACE "
+                        f"and ROBOFLOW_SAM3_WORKFLOW; the key's own workspace "
+                        f"is reported by GET https://api.roboflow.com/ . "
+                        f"Body: {response.text[:200]}")
                 last = f"HTTP {response.status_code}: {response.text[:200]}"
                 if response.status_code < 500 and response.status_code != 429:
                     break
-            except WorkflowAuthError:
+            except (WorkflowAuthError, WorkflowConfigError):
                 raise
             except WorkflowResponseError:
                 raise

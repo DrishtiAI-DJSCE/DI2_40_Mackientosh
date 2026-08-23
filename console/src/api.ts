@@ -3,6 +3,39 @@
  *  the UI says exactly that instead of showing example centres. */
 import type { ProjectRef, VideoRef } from "./review";
 
+/** One overturned proposal: the human's answer, plus what the machine was
+ *  claiming when they gave it. Both halves are needed -- a bare "no" is not a
+ *  usable label. */
+export interface RejectedRow {
+  id: number;
+  video_id: string;
+  video_name: string;
+  centre_name: string | null;
+  track_id: number;
+  decision: string;
+  machine_state: string | null;
+  key_class: string | null;
+  key_verdict: string | null;
+  key_pts_ms: number | null;
+  note: string | null;
+  reviewer: string;
+  decided_utc: string;
+}
+
+/** A stretch of a recording a human marked by hand. The only claim in the
+ *  system that no model produced. */
+export interface ReviewInterval {
+  id: number;
+  video_id: string;
+  from_ms: number;
+  to_ms: number;
+  kind: "violation" | "review" | "note";
+  track_id: number | null;
+  note: string | null;
+  reviewer: string;
+  created_utc: string;
+}
+
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -151,6 +184,28 @@ export const api = {
     call<{ job: { id: number; state: string; stage: string | null; progress: number; error: string | null; run_key: string | null } }>(
       `/api/jobs/${id}`,
     ),
+
+  /** Every overturned proposal, across every recording. */
+  dismissed: () => call<{ rows: RejectedRow[] }>("/api/dismissed"),
+
+  /** Stretches a human marked by hand on the timeline. */
+  intervals: (videoId: string) =>
+    call<{ rows: ReviewInterval[] }>(`/api/videos/${videoId}/intervals`),
+
+  markInterval: (
+    videoId: string,
+    body: {
+      from_ms: number;
+      to_ms: number;
+      kind?: "violation" | "review" | "note";
+      track_id?: number | null;
+      note?: string | null;
+    },
+  ) =>
+    call<{ ok: true }>(`/api/videos/${videoId}/intervals`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   describe: (image: string) =>
     call<{

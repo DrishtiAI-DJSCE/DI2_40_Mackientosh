@@ -298,3 +298,40 @@
   font-size: 0.66rem;
   color: var(--s-review);
 }
+
+/* Pinned below the tree: this view spans every project, so it is deliberately
+   not a node inside one. */
+.lib__rl {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 0;
+  border-top: 1px solid var(--rule, #d8d3ca);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lib__rl:hover { background: rgba(127, 127, 127, 0.09); }
+
+.lib__rl.is-on { background: rgba(127, 127, 127, 0.14); }
+
+.lib__rlTag {
+  flex: none;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  padding: 0.14rem 0.34rem;
+  border-radius: 3px;
+  background: var(--accent-2, #8acfe6);
+  color: #0b1013;
+}
+
+.lib__rlText { color: var(--slate); }
+.lib__rl.is-on .lib__rlText { color: inherit; }

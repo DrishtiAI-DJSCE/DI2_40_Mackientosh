@@ -7,11 +7,12 @@ import { Library } from "./components/Library";
 import { UploadPanel } from "./components/UploadPanel";
 import { Dashboard } from "./screens/Dashboard";
 import { ReviewScreen } from "./screens/ReviewScreen";
+import { RLScreen } from "./screens/RLScreen";
 import { DismissedScreen } from "./screens/DismissedScreen";
 import { VideoScreen } from "./screens/VideoScreen";
 import "./App.css";
 
-type Screen = "dashboard" | "review" | "video" | "dismissed";
+type Screen = "dashboard" | "review" | "video" | "dismissed" | "rl";
 
 const SCREENS: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Overview" },
@@ -166,6 +167,11 @@ export default function App() {
           setScreen("dashboard");
           setNavOpen(false);
         }}
+        rlOpen={screen === "rl"}
+        onOpenRL={() => {
+          setScreen("rl");
+          setNavOpen(false);
+        }}
         onChanged={(next) => {
           setProjects(next);
           if (!findVideo(next, videoId)) {
@@ -267,6 +273,7 @@ export default function App() {
           {bundle && screen === "video" && (
             <VideoScreen
               bundle={bundle}
+              videoId={video!.id}
               crops={crops}
               cropBase={video!.crops ?? ""}
               videoSrc={video!.video ?? ""}
@@ -274,6 +281,8 @@ export default function App() {
               decisions={plain}
             />
           )}
+
+          {screen === "rl" && <RLScreen />}
 
           {bundle && screen === "dismissed" && (
             <DismissedScreen

@@ -95,6 +95,24 @@ export interface DeviationConfig {
   /** Two people turned towards each other within this much time of each other
    *  are reported as a pair. */
   pairToleranceMs: number;
+  /** A person's own spread may not exceed this multiple of the population's
+   *  median spread.
+   *
+   *  Without a ceiling, noise buys immunity. Person #1 on the talking
+   *  recording turns right round at 4.5s -- their nose swings from 0.00 to
+   *  -0.69 while their shoulder span collapses from 46px to 24px, which is
+   *  what a torso rotating away from the camera looks like -- and the lane
+   *  reported nothing. Their robust spread over the whole recording came out
+   *  at 0.523 against a population median near 0.10, because their later
+   *  samples are a mess. Dividing a real 0.7 swing by their own noise gave
+   *  1.3z, under the 3z bar. The noisiest tracks were exactly the ones that
+   *  could never be flagged. */
+  maxScaleOverMedian: number;
+  /** An excursion must also clear this much in absolute terms, in shoulder
+   *  widths, regardless of how still the person normally is. This is the other
+   *  half of the same problem: capping the spread makes quiet people easier to
+   *  trip, so a floor keeps sub-pixel jitter from becoming an episode. */
+  minAbsolute: number;
 }
 
 export const DEVIATION: DeviationConfig = {
@@ -106,6 +124,8 @@ export const DEVIATION: DeviationConfig = {
   bridgeMs: 750,
   minHoldMs: 1200,
   pairToleranceMs: 1500,
+  maxScaleOverMedian: 2.0,
+  minAbsolute: 0.25,
 };
 
 /** Which way the head went, relative to this person's own centre. */
@@ -228,6 +248,15 @@ export function deviationEpisodes(
     baselines.set(trackId, { track_id: trackId, samples: list.length, centre, scale });
   }
 
+  // The ceiling, applied once the whole population is known. A spread far
+  // above everyone else's is a pose estimate falling apart, not a person who
+  // genuinely swings their head twice as much as the room.
+  const spreads = [...baselines.values()].map((b) => b.scale).sort((a, b) => a - b);
+  const ceiling = spreads.length
+    ? median(spreads) * cfg.maxScaleOverMedian
+    : Infinity;
+  for (const b of baselines.values()) b.scale = Math.min(b.scale, ceiling);
+
   // Pass three: runs of deviation, with hysteresis.
   const episodes: Episode[] = [];
   for (const [trackId, list] of series) {
@@ -265,8 +294,12 @@ export function deviationEpisodes(
     };
 
     for (const { t, v } of list) {
-      const z = (v - base.centre) / base.scale;
+      const offset = v - base.centre;
+      const z = offset / base.scale;
       const mag = Math.abs(z);
+      // Both bars, always: relative to this person, and large enough in
+      // absolute terms that it is a turn rather than keypoint jitter.
+      const big = Math.abs(offset) >= cfg.minAbsolute;
 
       if (open) {
         const stillOut = mag >= cfg.zExit && Math.sign(z) === open.sign;
@@ -282,7 +315,7 @@ export function deviationEpisodes(
         }
         shut();
       }
-      if (mag >= cfg.zEnter) {
+      if (mag >= cfg.zEnter && big) {
         open = { from: t, last: t, n: 1, peak: mag, peakMs: t, sign: Math.sign(z) || 1 };
       }
     }

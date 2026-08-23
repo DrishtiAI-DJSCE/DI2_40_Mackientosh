@@ -21,6 +21,8 @@ export function Library({
   open: navOpen = true,
   onPick,
   onChanged,
+  onOpenRL,
+  rlOpen = false,
 }: {
   projects: ProjectRef[];
   assets: Assets | null;
@@ -30,6 +32,9 @@ export function Library({
   open?: boolean;
   onPick: (id: string) => void;
   onChanged: (projects: ProjectRef[]) => void;
+  /** Opens the cross-recording view of everything reviewers overturned. */
+  onOpenRL: () => void;
+  rlOpen?: boolean;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [adding, setAdding] = useState<null | { kind: "project" }
@@ -197,6 +202,20 @@ export function Library({
           + New project
         </button>
       )}
+
+      {/* Pinned to the bottom, below the tree, because it is not part of the
+          hierarchy: it spans every project and every centre. The label is the
+          user's word for it; the screen itself is honest about the fact that
+          nothing here is reinforcement learning. */}
+      <button
+        className={`lib__rl ${rlOpen ? "is-on" : ""}`}
+        type="button"
+        onClick={onOpenRL}
+        title="Everything reviewers overturned, across every recording"
+      >
+        <span className="lib__rlTag mono">RL</span>
+        <span className="lib__rlText">Rejected proposals</span>
+      </button>
     </nav>
   );
 }

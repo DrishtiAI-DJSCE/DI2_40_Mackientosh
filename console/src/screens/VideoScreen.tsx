@@ -11,6 +11,9 @@ import {
 import { StateChip } from "../components/StateChip";
 import { FindingsTable } from "../components/FindingsTable";
 import { Spotlight } from "../components/Spotlight";
+import { api, type ReviewInterval } from "./../api";
+import { deviationEpisodes } from "../lib/deviation";
+import { buildHeat, HEAT_LABEL, type HeatSource } from "../lib/heatmap";
 import { subjectName, timecode } from "../lib/format";
 import { flagLabel } from "../lib/humanize";
 import "./VideoScreen.css";
@@ -159,6 +162,7 @@ function buildKinds(
 
 export function VideoScreen({
   bundle,
+  videoId,
   crops,
   cropBase,
   videoSrc,
@@ -166,6 +170,8 @@ export function VideoScreen({
   decisions,
 }: {
   bundle: Bundle;
+  /** The store's id for this recording, used for reviewer marks. */
+  videoId: string;
   crops: CropManifest;
   cropBase: string;
   videoSrc: string;
@@ -255,6 +261,54 @@ export function VideoScreen({
   // put a box on every head in the hall and made a busy run and a quiet one
   // look identical.
   const [drawAll, setDrawAll] = useState(false);
+  // Turns are measured from the overlay geometry, not read from the run: the
+  // pipeline's own orientation events need a yaw baseline that fails at this
+  // source scale for most people. See lib/deviation.ts.
+  const turns = useMemo(() => {
+    const dismissed = new Set(
+      bundle.tracks
+        .filter((t) => decisions[t.track_id] === "human_dismissed")
+        .map((t) => t.track_id),
+    );
+    return deviationEpisodes(overlay).episodes.filter(
+      (e) => !dismissed.has(e.track_id),
+    );
+  }, [overlay, bundle.tracks, decisions]);
+
+  // Skeletons are off by default because a hall of 236 people becomes a
+  // wireframe mesh. That reasoning does not apply to a recording with nothing
+  // shortlisted: there is no clutter to protect against, and the pose is the
+  // only thing the run has to show. Runs once, and only upward, so a reviewer
+  // who switches it off keeps it off.
+  const poseDefaulted = useRef(false);
+  useEffect(() => {
+    if (poseDefaulted.current || !overlay) return;
+    if (bundle.tracks.length === 0) {
+      poseDefaulted.current = true;
+      setLayers((l) => ({ ...l, skeletons: true, wrists: true }));
+    }
+  }, [overlay, bundle.tracks.length]);
+
+  const [intervals, setIntervals] = useState<ReviewInterval[]>([]);
+  useEffect(() => {
+    let live = true;
+    api
+      .intervals(videoId)
+      .then((r) => live && setIntervals(r.rows))
+      // A failure here must not blank the timeline: the machine marks are
+      // still valid without the human ones.
+      .catch(() => live && setIntervals([]));
+    return () => {
+      live = false;
+    };
+  }, [videoId]);
+
+  const [heatSource, setHeatSource] = useState<HeatSource | null>(null);
+  const heat = useMemo(
+    () => (heatSource ? buildHeat(overlay, heatSource, turns) : null),
+    [overlay, heatSource, turns],
+  );
+
   const ofInterest = useMemo(() => {
     const ids = new Set<number>();
     for (const t of live) {
@@ -304,7 +358,24 @@ export function VideoScreen({
             overlay={overlay}
             layers={layers}
             focusTrack={focus}
-            onlyTracks={drawAll ? null : ofInterest}
+            onlyTracks={
+              // An empty shortlist must not mean an empty frame.
+              //
+              // `ofInterest` is built from the *bundle* -- people fusion routed
+              // somewhere -- so a recording whose later stages never ran has
+              // none, the set is empty, and every person gets skipped. The
+              // CAMERA3 recording drew nothing at all despite its overlay
+              // carrying 807 person-samples with full keypoints: stages 14b-15
+              // have not run on it, so its bundle lists zero tracks.
+              //
+              // The overlay geometry is a separate measurement and is valid on
+              // its own. With nothing shortlisted, draw everyone -- boxes, pose
+              // and head direction are what the run did produce, and an
+              // unmarked frame implies the detector found nobody.
+              drawAll || ofInterest.size === 0 ? null : ofInterest
+            }
+            turns={turns}
+            heat={heat}
             onTimeUpdate={setNowMs}
             seekToMs={seek}
             inset={
@@ -356,6 +427,28 @@ export function VideoScreen({
                         );
                       }),
                   )}
+                  {/* Reviewer-marked stretches, drawn last so they sit over
+                      every machine mark. A human saying "here" outranks any
+                      proposal underneath it, and the band is full height so it
+                      cannot be mistaken for one more lane. */}
+                  {intervals.map((iv) => {
+                    const left = pct(iv.from_ms);
+                    return (
+                      <i
+                        key={`iv${iv.id}`}
+                        className={`ribbon__human is-${iv.kind}`}
+                        style={{
+                          left: `${left}%`,
+                          width: `${Math.max(pct(iv.to_ms) - left, 0.4)}%`,
+                        }}
+                        title={
+                          `${iv.kind} marked by ${iv.reviewer}\n` +
+                          `${timecode(iv.from_ms)} – ${timecode(iv.to_ms)}` +
+                          (iv.note ? `\n${iv.note}` : "")
+                        }
+                      />
+                    );
+                  })}
                   <span
                     className="ribbon__head"
                     style={{ left: `${pct(nowMs)}%` }}
@@ -407,6 +500,45 @@ export function VideoScreen({
             </button>
           ))}
         </div>
+
+        <div className="video__layers">
+          <span className="video__legend mono">Heatmap</span>
+          <button
+            type="button"
+            className={heatSource === null ? "is-on" : ""}
+            aria-pressed={heatSource === null}
+            onClick={() => setHeatSource(null)}
+          >
+            off
+          </button>
+          {(Object.keys(HEAT_LABEL) as HeatSource[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              className={heatSource === key ? "is-on" : ""}
+              aria-pressed={heatSource === key}
+              onClick={() => setHeatSource(key)}
+            >
+              {HEAT_LABEL[key]}
+            </button>
+          ))}
+        </div>
+
+        {/* The scale, in the units it was built from. Without the peak count a
+            heatmap looks identical whether it accumulated 3 detections or
+            3,000, because it is always normalised to its own maximum. */}
+        {heat && heatSource && (
+          <p className="video__heatnote mono">
+            {heat.total.toLocaleString()} {HEAT_LABEL[heatSource]} accumulated ·
+            brightest cell = {heat.peak.toFixed(1)}
+            {heatSource === "objects" ? " confidence-weighted proposals" : ""}
+            {heatSource === "people" ? " sightings" : ""}
+            {heatSource === "turns" ? " turns" : ""}.{" "}
+            <b>This is a density of proposals, not of cheating.</b> Compare it
+            against &ldquo;where people were&rdquo; before reading a bright
+            region as anything — a busy seat is bright in both.
+          </p>
+        )}
 
         {!overlay && !error && (
           <p className="video__loading mono">Loading overlay geometry…</p>

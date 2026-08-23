@@ -129,6 +129,9 @@ export async function createApp({ serveStatic = true } = {}) {
       const result = await route(req.method, req.originalUrl.split("?")[0], req.body);
       if (!result) return next();
       if (result.text !== undefined) {
+        // A route may ask for extra headers -- content-disposition on the CSV
+        // export, so a browser saves it rather than rendering it as a page.
+        if (result.headers) res.set(result.headers);
         return res.status(result.status).type(result.type).send(result.text);
       }
       res.status(result.status).json(result.body);

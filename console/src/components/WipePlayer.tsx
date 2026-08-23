@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OverlayBundle, OverlayFrame } from "../overlay";
 import { nearestFrame } from "../overlay";
+import type { Episode } from "../lib/deviation";
+import { heatColor, type HeatField } from "../lib/heatmap";
 import { timecode } from "../lib/format";
 import "./WipePlayer.css";
 
@@ -11,6 +13,8 @@ export interface Layers {
   objects: boolean;
   wrists: boolean;
   facing: boolean;
+  /** Mark people while they are mid-turn, with the arithmetic that says so. */
+  turning: boolean;
 }
 
 /**
@@ -28,6 +32,7 @@ export const DEFAULT_LAYERS: Layers = {
   objects: true,
   wrists: false,
   facing: true,
+  turning: true,
 };
 
 export const LAYER_LABEL: Record<keyof Layers, string> = {
@@ -37,6 +42,7 @@ export const LAYER_LABEL: Record<keyof Layers, string> = {
   objects: "object boxes",
   wrists: "wrist markers",
   facing: "head direction",
+  turning: "turned away",
 };
 
 /** Resist progressively past a boundary instead of stopping dead. A hard stop
@@ -90,6 +96,8 @@ export function WipePlayer({
   layers,
   focusTrack,
   onlyTracks,
+  turns,
+  heat,
   onTimeUpdate,
   seekToMs,
   below,
@@ -98,6 +106,14 @@ export function WipePlayer({
   videoSrc: string;
   overlay: OverlayBundle | null;
   layers: Layers;
+  /** Every measured turn in the recording. The player marks the ones that
+   *  contain the current instant, so the mark appears while the turn is
+   *  happening and leaves when it ends -- a box that stayed on for the whole
+   *  recording would say nothing about *when*. */
+  turns?: Episode[];
+  /** Accumulated spatial density, drawn under every other mark. Null draws
+   *  none. */
+  heat?: HeatField | null;
   focusTrack?: number | null;
   /** Draw only these people. Null draws everyone.
    *
@@ -134,9 +150,17 @@ export function WipePlayer({
   const layersRef = useRef(layers);
   const focusRef = useRef<number | null | undefined>(focusTrack);
   const onlyRef = useRef<Set<number> | null | undefined>(onlyTracks);
+  const turnsRef = useRef<Episode[] | undefined>(turns);
+  const heatRef = useRef<HeatField | null | undefined>(heat);
+  // The scaled-up density is rebuilt only when the field itself changes;
+  // rebuilding it every frame would put a cols x rows ImageData allocation
+  // inside the draw loop.
+  const heatTileRef = useRef<{ field: HeatField; canvas: HTMLCanvasElement } | null>(null);
   layersRef.current = layers;
   focusRef.current = focusTrack;
   onlyRef.current = onlyTracks;
+  turnsRef.current = turns;
+  heatRef.current = heat;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -174,16 +198,96 @@ export function WipePlayer({
     const objectColor = css("--lane-object", "#e5825c");
     const dim = css("--slate", "#93a1ac");
 
+    // Density first, so every other mark sits on top of it rather than being
+    // washed out by it.
+    const field = heatRef.current;
+    if (field && field.peak > 0) {
+      let tile = heatTileRef.current;
+      if (!tile || tile.field !== field) {
+        const off = document.createElement("canvas");
+        off.width = field.cols;
+        off.height = field.rows;
+        const octx = off.getContext("2d");
+        if (octx) {
+          const img = octx.createImageData(field.cols, field.rows);
+          for (let i = 0; i < field.cells.length; i += 1) {
+            const [r, g, b, a] = heatColor(field.cells[i]);
+            img.data[i * 4] = r;
+            img.data[i * 4 + 1] = g;
+            img.data[i * 4 + 2] = b;
+            img.data[i * 4 + 3] = a;
+          }
+          octx.putImageData(img, 0, 0);
+          tile = { field, canvas: off };
+          heatTileRef.current = tile;
+        }
+      }
+      if (tile) {
+        // Smoothing on: the grid is 16px cells and the field is already
+        // blurred, so bilinear upscaling is the intended look. Nearest
+        // neighbour would draw visible squares and imply a precision the
+        // measurement does not have.
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(tile.canvas, 0, 0, w, h);
+      }
+    }
+
     const only = onlyRef.current;
+
+    // Turns containing this instant, by person. Built per draw rather than
+    // cached: the list is a handful of entries and the alternative is an index
+    // that has to be invalidated whenever the recording changes.
+    const nowMs = video.currentTime * 1000;
+    const active = new Map<number, Episode>();
+    if (L.turning) {
+      for (const e of turnsRef.current ?? []) {
+        if (nowMs >= e.from_ms && nowMs <= e.to_ms) active.set(e.track_id, e);
+      }
+    }
+    const turnColor = css("--lane-orientation", "#d9a84a");
 
     for (const person of frame.p) {
       // A person nobody is interested in is not drawn faintly, they are not
       // drawn. Faint marks at this density still read as clutter.
-      if (only && !only.has(person.i) && focus !== person.i) continue;
+      const turn = active.get(person.i);
+      // Someone mid-turn is drawn whether or not they made the object lane's
+      // shortlist. That lane is about things in hands; this one is about where
+      // a head went, and a person can be interesting to one and not the other.
+      if (only && !only.has(person.i) && focus !== person.i && !turn) continue;
 
       const isFocus = focus === undefined || focus === null || focus === person.i;
       ctx.globalAlpha = isFocus ? 1 : 0.28;
       const [x1, y1, x2, y2] = person.b;
+
+      if (turn) {
+        // Drawn first and thick, so it reads as the reason this person is
+        // marked rather than as decoration on a box drawn for another reason.
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = turnColor;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x1 - 2, y1 - 2, x2 - x1 + 4, y2 - y1 + 4);
+
+        // The metrics, on the picture. A reviewer should not have to match a
+        // box against a row in a table below to find out what was measured.
+        const lines = [
+          `#${person.i} turned ${turn.away}`,
+          `${turn.peak_z.toFixed(1)}x own spread · ${((turn.to_ms - turn.from_ms) / 1000).toFixed(1)}s`,
+          turn.with_track != null ? `with #${turn.with_track}` : null,
+        ].filter(Boolean) as string[];
+
+        ctx.font = "600 12px ui-monospace, Menlo, monospace";
+        const boxW = Math.max(...lines.map((s) => ctx.measureText(s).width)) + 10;
+        const boxH = lines.length * 14 + 6;
+        // Above the head when there is room, otherwise inside the top of the
+        // box: a label clipped off the top of the frame is a label nobody
+        // reads.
+        const ly = y1 - boxH - 4 >= 0 ? y1 - boxH - 4 : y1 + 2;
+        ctx.fillStyle = "rgba(0,0,0,.72)";
+        ctx.fillRect(x1 - 2, ly, boxW, boxH);
+        ctx.fillStyle = turnColor;
+        lines.forEach((s, i) => ctx.fillText(s, x1 + 3, ly + 15 + i * 14));
+      }
 
       if (L.boxes) {
         ctx.strokeStyle = isFocus ? accent : dim;

@@ -268,6 +268,117 @@ export function makeRouter({ store, assets, describe, agentToken }) {
       });
     }
 
+    /** Every proposal a reviewer overturned, across every recording.
+     *
+     * This is the negative half of the training set and it is deliberately not
+     * per-video: the point of looking at it is to see what the machine keeps
+     * getting wrong *in general*. A per-recording view answers "was this hall
+     * clean", which is a different question and already has a screen.
+     *
+     * Reads `current_decision`, so a person confirmed after being dismissed is
+     * not listed. The reversal itself stays in `decisions` and is what
+     * `/api/labels.jsonl` exports. */
+    if (method === "GET" && pathname === "/api/dismissed") {
+      return ok({
+        rows: await store.all(
+          `SELECT d.*, v.name AS video_name, c.name AS centre_name
+             FROM current_decision d
+             JOIN videos  v ON v.id = d.video_id
+             LEFT JOIN centres c ON c.id = v.centre_id
+            WHERE d.decision = 'human_dismissed'
+            ORDER BY d.id DESC`,
+        ),
+      });
+    }
+
+    /** The same set as /api/dismissed, as a spreadsheet.
+     *
+     * Server-side rather than built in the browser so it is scriptable: this is
+     * the negative half of a training set, and something other than a person
+     * clicking a button will eventually want it. Same reasoning as
+     * /api/labels.jsonl, which is the full history including reversals -- this
+     * is the flat current-state view. */
+    if (method === "GET" && pathname === "/api/dismissed.csv") {
+      const rows = await store.all(
+        `SELECT d.decided_utc, c.name AS centre_name, v.name AS video_name,
+                d.video_id, d.track_id, d.key_pts_ms, d.key_class,
+                d.key_verdict, d.machine_state, d.object_truth,
+                d.evidence_quality, d.policy_context, d.note, d.reviewer
+           FROM current_decision d
+           JOIN videos  v ON v.id = d.video_id
+           LEFT JOIN centres c ON c.id = v.centre_id
+          WHERE d.decision = 'human_dismissed'
+          ORDER BY d.id DESC`,
+      );
+      const columns = [
+        "decided_utc", "centre_name", "video_name", "video_id", "track_id",
+        "key_pts_ms", "key_class", "key_verdict", "machine_state",
+        "object_truth", "evidence_quality", "policy_context", "note",
+        "reviewer",
+      ];
+      // RFC 4180: quote everything, double any inner quote. Quoting
+      // unconditionally rather than only when needed keeps a recording named
+      // "Hall 3 · Seat 12, paper" from splitting itself across two columns.
+      const cell = (v) =>
+        v === null || v === undefined ? '""' : `"${String(v).replace(/"/g, '""')}"`;
+      const lines = [columns.map(cell).join(",")];
+      for (const r of rows) lines.push(columns.map((k) => cell(r[k])).join(","));
+      return {
+        status: 200,
+        // The BOM is for Excel: without it, Excel reads the file as the local
+        // codepage and the centre names with a middle dot arrive as mojibake.
+        text: "﻿" + lines.join("\r\n") + "\r\n",
+        type: "text/csv; charset=utf-8",
+        headers: {
+          "content-disposition":
+            'attachment; filename="drishti-rejected-proposals.csv"',
+        },
+      };
+    }
+
+    /** Stretches of a recording a human marked by hand. Retracted rows are
+     *  kept in the table but not returned: the timeline draws what stands. */
+    if (method === "GET" && seg[0] === "videos" && seg[2] === "intervals") {
+      return ok({
+        rows: await store.all(
+          `SELECT * FROM intervals
+            WHERE video_id = ? AND retracted = 0
+            ORDER BY from_ms`,
+          [seg[1]],
+        ),
+      });
+    }
+
+    if (method === "POST" && seg[0] === "videos" && seg[2] === "intervals") {
+      const from = Number(body?.from_ms);
+      const to = Number(body?.to_ms);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
+        return bad(400, "from_ms and to_ms must be numbers with to_ms > from_ms.");
+      }
+      const kind = body?.kind ?? "violation";
+      if (!["violation", "review", "note"].includes(kind)) {
+        return bad(400, "kind must be violation, review or note.");
+      }
+      const video = await store.get("SELECT id FROM videos WHERE id = ?", [seg[1]]);
+      if (!video) return bad(404, "No such recording.");
+      await store.run(
+        `INSERT INTO intervals
+           (video_id, from_ms, to_ms, kind, track_id, note, reviewer, created_utc)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          seg[1],
+          from,
+          to,
+          kind,
+          body?.track_id ?? null,
+          body?.note ?? null,
+          body?.reviewer ?? "local",
+          new Date().toISOString(),
+        ],
+      );
+      return ok({ ok: true });
+    }
+
     /** The whole label set as JSONL, for the training pass. Includes
      *  reversals: a mind changed is part of the record. */
     if (method === "GET" && pathname === "/api/labels.jsonl") {
