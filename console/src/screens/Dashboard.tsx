@@ -1,5 +1,6 @@
 import type { Bundle } from "../types";
 import type { CropManifest, Decision, VideoRef } from "../review";
+import type { ReactNode } from "react";
 import { StateChip } from "../components/StateChip";
 import { seconds, withDenominator } from "../lib/format";
 import "./Dashboard.css";
@@ -25,12 +26,16 @@ export function Dashboard({
   video,
   decisions,
   onReview,
+  upload,
 }: {
   bundle: Bundle;
   crops: CropManifest;
   video: VideoRef;
   decisions: Record<number, Decision>;
   onReview: () => void;
+  /** The add-a-recording panel. Passed in rather than built here so the same
+   *  panel serves the empty console, where there is no dashboard to sit on. */
+  upload?: ReactNode;
 }) {
   const counts = bundle.counts.states;
   const total = bundle.counts.tracks;
@@ -47,6 +52,8 @@ export function Dashboard({
 
   return (
     <div className="db">
+      {upload}
+
       <section className="db__tiles">
         <article className="tile tile--accent">
           <p>Needs a human look</p>

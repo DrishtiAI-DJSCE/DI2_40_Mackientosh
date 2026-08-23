@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OverlayBundle, OverlayFrame } from "../overlay";
 import { nearestFrame } from "../overlay";
+import { timecode } from "../lib/format";
 import "./WipePlayer.css";
 
 export interface Layers {
@@ -9,14 +10,24 @@ export interface Layers {
   ids: boolean;
   objects: boolean;
   wrists: boolean;
+  facing: boolean;
 }
 
+/**
+ * What is drawn before anyone touches a control.
+ *
+ * Skeletons are off. With 236 tracked people a full skeleton pass turned the
+ * frame into a wireframe mesh -- every joint of every person, most of whom the
+ * system said nothing about. The layer is still there for looking at one
+ * person; it is just not what you want to open on.
+ */
 export const DEFAULT_LAYERS: Layers = {
   boxes: true,
-  skeletons: true,
+  skeletons: false,
   ids: true,
   objects: true,
-  wrists: true,
+  wrists: false,
+  facing: true,
 };
 
 export const LAYER_LABEL: Record<keyof Layers, string> = {
@@ -25,6 +36,7 @@ export const LAYER_LABEL: Record<keyof Layers, string> = {
   ids: "track ids",
   objects: "object boxes",
   wrists: "wrist markers",
+  facing: "head direction",
 };
 
 /** Resist progressively past a boundary instead of stopping dead. A hard stop
@@ -58,24 +70,54 @@ function css(name: string, fallback: string) {
  * The marks are drawn on a canvas rather than baked into a second video, so
  * layers can be switched off and a box can say which track it belonged to.
  */
+const SPEEDS = [0.25, 0.5, 1, 1.5, 2, 4];
+const FPS = 25;
+
+/** Steps, symmetric in both directions. Frame steps come first because the
+ *  point of this player is landing on the instant a detection fired, not
+ *  watching the recording. */
+const STEPS: { label: string; seconds: number }[] = [
+  { label: "1f", seconds: 1 / FPS },
+  { label: "5f", seconds: 5 / FPS },
+  { label: "1s", seconds: 1 },
+  { label: "5s", seconds: 5 },
+  { label: "10s", seconds: 10 },
+];
+
 export function WipePlayer({
   videoSrc,
   overlay,
   layers,
   focusTrack,
+  onlyTracks,
   onTimeUpdate,
   seekToMs,
+  below,
 }: {
   videoSrc: string;
   overlay: OverlayBundle | null;
   layers: Layers;
   focusTrack?: number | null;
+  /** Draw only these people. Null draws everyone.
+   *
+   *  The default is the set the system actually said something about. Drawing
+   *  all 236 tracked people put a box on every head in the hall, which is the
+   *  same picture whether the run found one thing or nothing -- the marks stop
+   *  carrying information at that density. */
+  onlyTracks?: Set<number> | null;
   onTimeUpdate?: (ms: number) => void;
   seekToMs?: number | null;
+  /** Rendered flush under the picture, inside the same frame. The timeline
+   *  belongs to the video, so it is not allowed to drift into a separate
+   *  section further down the page. */
+  below?: React.ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [speed, setSpeed] = useState(1);
 
   // Wipe position as a fraction. Kept in a ref for the draw loop and mirrored
   // into state only for the handle's own transform, so dragging never
@@ -86,8 +128,10 @@ export function WipePlayer({
   const dragRef = useRef<{ id: number; grabDx: number } | null>(null);
   const layersRef = useRef(layers);
   const focusRef = useRef<number | null | undefined>(focusTrack);
+  const onlyRef = useRef<Set<number> | null | undefined>(onlyTracks);
   layersRef.current = layers;
   focusRef.current = focusTrack;
+  onlyRef.current = onlyTracks;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -125,7 +169,13 @@ export function WipePlayer({
     const objectColor = css("--lane-object", "#e5825c");
     const dim = css("--slate", "#93a1ac");
 
+    const only = onlyRef.current;
+
     for (const person of frame.p) {
+      // A person nobody is interested in is not drawn faintly, they are not
+      // drawn. Faint marks at this density still read as clutter.
+      if (only && !only.has(person.i) && focus !== person.i) continue;
+
       const isFocus = focus === undefined || focus === null || focus === person.i;
       ctx.globalAlpha = isFocus ? 1 : 0.28;
       const [x1, y1, x2, y2] = person.b;
@@ -172,6 +222,65 @@ export function WipePlayer({
           ctx.beginPath();
           ctx.arc(wx, wy, 4, 0, Math.PI * 2);
           ctx.fillStyle = isFocus ? accent : dim;
+          ctx.fill();
+        }
+      }
+
+      // Head direction, as an arrow off the head.
+      //
+      // This is the pipeline's own coarse `facing` label, not a computed gaze
+      // ray, and it is drawn at four directions because that is all the label
+      // distinguishes. Gaze is not recoverable at this source scale -- drawing
+      // a precise-looking ray would assert a measurement nothing made. Where
+      // the pipeline could not resolve facing, nothing is drawn, because "not
+      // resolvable" and "facing the camera" must not look the same.
+      if (L.facing && person.f && person.f !== "not_resolvable_at_source_scale") {
+        const nose = [person.j[0], person.j[1]];
+        const lEar = [person.j[6], person.j[7]];
+        const rEar = [person.j[8], person.j[9]];
+        const ears = [lEar, rEar].filter(([x, y]) => x >= 0 && y >= 0);
+
+        // Anchor on the head: the ear midpoint if we have one, else the nose.
+        let hx = nose[0];
+        let hy = nose[1];
+        if (ears.length) {
+          hx = ears.reduce((s, e) => s + e[0], 0) / ears.length;
+          hy = ears.reduce((s, e) => s + e[1], 0) / ears.length;
+        }
+        if (hx >= 0 && hy >= 0) {
+          const span = Math.max(x2 - x1, 24);
+          const len = span * 0.55;
+          const dir: Record<string, [number, number]> = {
+            frontal: [0, 1],
+            downward: [0, 1],
+            turned_left: [-1, 0.15],
+            turned_right: [1, 0.15],
+          };
+          const [dx, dy] = dir[person.f] ?? [0, 1];
+          const tx = hx + dx * len;
+          const ty = hy + dy * len * (person.f === "downward" ? 1 : 0.5);
+
+          ctx.strokeStyle = person.f === "downward" ? css("--lane-orientation", "#d9a84a") : accent;
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(hx, hy);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+
+          const angle = Math.atan2(ty - hy, tx - hx);
+          const head = Math.max(span * 0.13, 5);
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(
+            tx - head * Math.cos(angle - 0.42),
+            ty - head * Math.sin(angle - 0.42),
+          );
+          ctx.lineTo(
+            tx - head * Math.cos(angle + 0.42),
+            ty - head * Math.sin(angle + 0.42),
+          );
+          ctx.closePath();
           ctx.fill();
         }
       }
@@ -302,6 +411,56 @@ export function WipePlayer({
     }
   }, []);
 
+  /** Step by a signed number of seconds. A sub-second step pauses first:
+   *  stepping while playing fights the reviewer, because playback carries them
+   *  straight off the frame they aimed at. */
+  const nudge = useCallback((delta: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (Math.abs(delta) < 0.5 && !v.paused) {
+      v.pause();
+      setPlaying(false);
+    }
+    v.currentTime = Math.max(
+      0,
+      Math.min(v.duration || Number.MAX_SAFE_INTEGER, v.currentTime + delta),
+    );
+  }, []);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) v.playbackRate = speed;
+  }, [speed]);
+
+  // The readout under the picture is driven by the element's own events, not
+  // by the rAF loop: it has to stay right while paused, which is exactly when
+  // rAF is least reliable.
+  //
+  // The playhead published to the parent rides on these events too. It used to
+  // come only from the rAF loop, and the timeline marker underneath sat at
+  // zero through a whole sequence of frame steps -- rAF does not run while the
+  // page is not compositing, and a frame step is precisely a seek made while
+  // paused. Measured: the clock read 00:05.0 while the ribbon still said
+  // 00:00.0.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const tick = () => {
+      setNow(v.currentTime * 1000);
+      timeCbRef.current?.(v.currentTime * 1000);
+    };
+    const meta = () => setDuration((v.duration || 0) * 1000);
+    const events = ["timeupdate", "seeked", "seeking"];
+    for (const e of events) v.addEventListener(e, tick);
+    v.addEventListener("loadedmetadata", meta);
+    v.addEventListener("durationchange", meta);
+    return () => {
+      for (const e of events) v.removeEventListener(e, tick);
+      v.removeEventListener("loadedmetadata", meta);
+      v.removeEventListener("durationchange", meta);
+    };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -374,17 +533,73 @@ export function WipePlayer({
         >
           <i />
         </div>
+
+        {/* Transport sits on the picture, where the reviewer's eye already is.
+            A control strip in a panel below means looking away from the frame
+            to press the button that changes the frame. */}
+        <div className="wipe__transport" onPointerDown={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="wipe__play"
+            onClick={toggle}
+            aria-label={playing ? "Pause" : "Play"}
+          >
+            {playing ? (
+              <svg viewBox="0 0 12 14" aria-hidden="true">
+                <rect x="1" y="1" width="3.4" height="12" rx="1" />
+                <rect x="7.6" y="1" width="3.4" height="12" rx="1" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 12 14" aria-hidden="true">
+                <path d="M2 1.4v11.2a1 1 0 0 0 1.53.85l8.2-5.6a1 1 0 0 0 0-1.7l-8.2-5.6A1 1 0 0 0 2 1.4Z" />
+              </svg>
+            )}
+          </button>
+
+          <div className="wipe__steps">
+            {[...STEPS].reverse().map((s) => (
+              <button
+                key={`b${s.label}`}
+                type="button"
+                title={`Back ${s.label}`}
+                onClick={() => nudge(-s.seconds)}
+              >
+                −{s.label}
+              </button>
+            ))}
+            {STEPS.map((s) => (
+              <button
+                key={`f${s.label}`}
+                type="button"
+                title={`Forward ${s.label}`}
+                onClick={() => nudge(s.seconds)}
+              >
+                +{s.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="wipe__speed">
+            <span className="mono">speed</span>
+            <select
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
+            >
+              {SPEEDS.map((s) => (
+                <option key={s} value={s}>
+                  {s}×
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <span className="wipe__clock mono">
+            {timecode(now)} / {timecode(duration)}
+          </span>
+        </div>
       </div>
 
-      <div className="wipe__bar">
-        <button type="button" onClick={toggle} className="wipe__play">
-          {playing ? "Pause" : "Play"}
-        </button>
-        <span className="wipe__hint mono">
-          drag the handle &middot; <kbd>a</kbd> flip &middot; <kbd>\</kbd> centre
-          &middot; <kbd>,</kbd> <kbd>.</kbd> frame step
-        </span>
-      </div>
+      {below}
     </div>
   );
 }

@@ -1,6 +1,15 @@
 /** Shapes from tools/build_review_crops.py, plus the reviewer's own decision. */
 
-export type Decision = "confirmed" | "dismissed" | "needs_better_view";
+/** The reviewer's answer, in the contract's own vocabulary.
+ *
+ *  Not a private UI enum: these are the exact three values the store keeps and
+ *  the two that `fusion.assert_machine_state()` refuses to write, so a row can
+ *  be replayed into the pipeline without translation. `needs_better_view` is
+ *  the reviewer abstaining -- a third answer, never a quiet dismissal. */
+export type Decision =
+  | "human_confirmed"
+  | "human_dismissed"
+  | "needs_better_view";
 
 export interface StripFrame {
   pts_ms: number;
@@ -33,10 +42,9 @@ export interface CropEntry {
 
 export type CropManifest = Record<string, CropEntry>;
 
-/** A project is a hall's worth of recordings: CET Exam > Dahisar > 50 videos.
- *  Only one video is wired to real artifacts today; the rest are declared so
- *  the shape of the deployment is visible, and each says plainly that it has
- *  not been processed. */
+/** A project is an exam; a centre is a venue; a recording is one camera.
+ *  Every one of them is created by the person using the console -- see
+ *  `projects.ts` for why none of this is seeded. */
 export interface VideoRef {
   id: string;
   name: string;
@@ -46,6 +54,8 @@ export interface VideoRef {
   video?: string;
   crops?: string;
   processed: boolean;
+  /** How many people in this recording a human has already answered for. */
+  decided?: number;
 }
 
 export interface CentreRef {

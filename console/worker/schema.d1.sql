@@ -1,3 +1,12 @@
+-- Drishti console store, D1 edition.
+--
+-- Generated from server/schema.sql by dropping the two PRAGMAs: D1 runs WAL
+-- and enforces foreign keys itself, and rejects the statements. Everything
+-- else is byte-identical -- D1 is SQLite, so the local store and the
+-- deployed one cannot drift on shape.
+--
+-- Original header follows.
+--
 -- Drishti console store.
 --
 -- Two things live here, and they are different in kind.
@@ -15,8 +24,6 @@
 -- The console reads the *latest* decision per (video, track) through the
 -- `current_decision` view. The table underneath keeps everything.
 
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS projects (
   id           TEXT PRIMARY KEY,
