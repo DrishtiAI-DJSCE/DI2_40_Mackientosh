@@ -74,8 +74,8 @@ export default function App() {
       }),
       video.crops
         ? fetch(`${video.crops}/manifest.json`)
-            .then((r) => (r.ok ? r.json() : {}))
-            .catch(() => ({}))
+          .then((r) => (r.ok ? r.json() : {}))
+          .catch(() => ({}))
         : Promise.resolve({}),
       api.decisions(video.id).catch(() => ({ current: {}, revisions: 0 })),
     ])

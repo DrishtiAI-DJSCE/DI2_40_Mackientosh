@@ -57,9 +57,9 @@ export function Library({
       style={
         typeof window !== "undefined" && window.matchMedia("(max-width: 54rem)").matches
           ? {
-              transform: navOpen ? "translateX(0)" : "translateX(-101%)",
-              visibility: navOpen ? "visible" : "hidden",
-            }
+            transform: navOpen ? "translateX(0)" : "translateX(-101%)",
+            visibility: navOpen ? "visible" : "hidden",
+          }
           : undefined
       }
       aria-hidden={undefined}
