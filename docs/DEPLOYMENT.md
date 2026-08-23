@@ -7,7 +7,7 @@ Three pieces, deployed separately because they have genuinely different needs:
 | Console + API | Cloudflare Worker (free) | request/response work, no state of its own |
 | Decisions + hierarchy | Cloudflare D1 (free, 5 GB) | D1 *is* SQLite — same schema as local |
 | Recordings, bundles, crops | Cloudflare R2 (free, 10 GB) | ~105 MB of video and JPEGs, and R2 charges nothing for egress |
-| The pipeline | the GPU box (Racer, 3090) | stages 1–15 are CUDA work |
+| The pipeline | a rented GPU instance (Race Engineering) | stages 1–15 are CUDA work |
 
 **The pipeline never runs in a Worker.** Stage 8 alone is minutes of GPU time;
 a Worker's CPU budget is milliseconds. The Worker serves what a run produced.
@@ -115,8 +115,8 @@ Create the database and the bucket:
 npx wrangler d1 create drishti
 ```
 
-Copy the `database_id` it prints into `wrangler.toml`, replacing
-`REPLACE_WITH_D1_DATABASE_ID`. Then:
+Copy the `database_id` it prints into `wrangler.toml`. (Done: the deployed
+database is `d298a37d-c93b-4a74-acdc-950fa51542f1`.) Then:
 
 ```bash
 npx wrangler d1 execute drishti --remote --file worker/schema.d1.sql
@@ -159,50 +159,88 @@ ends up showing one broken image and nobody knows which.
 ## 4. Register the runs
 
 ```bash
-node tools/register-runs.mjs --base https://drishti-console.<you>.workers.dev
+node tools/register-runs.mjs --base https://drishti-console.drishti-console.workers.dev
 ```
 
 Idempotent, and it targets whatever console you point it at.
 
 ---
 
-## 5. The GPU box (Racer)
+## 5. The GPU instance (Race Engineering)
+
+Race Engineering rents GPU instances by the hour. That changes two things
+versus a machine you own, and both are already handled by the design:
+
+- **The instance is ephemeral.** Anything written to its local disk is gone
+  when you stop paying. So the pipeline's outputs go to R2, not to the
+  instance, and the agent uploads before it reports the job complete.
+- **It has no fixed address**, and you would not want to expose one anyway.
+  The agent polls outbound, so the instance never needs to be reachable.
+
+Because it is billed by the hour, the useful pattern is: queue the jobs first,
+then start the instance, let the agent drain the queue, and stop it. Nothing is
+lost if you stop it mid-job — the job stays `claimed` and the recording keeps
+its previous state; re-queue it on the next session.
+
+### Once per instance
 
 ```bash
-git clone <repo> && cd Project-Classroom
-python -m venv .venv && .venv\Scripts\activate      # Windows
+git clone <your repo> && cd Project-Classroom
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Check CUDA is actually in use before trusting a run — the three silent
-CPU-fallback traps in this project all report success while running on the CPU:
+**Verify CUDA before trusting a single run.** All three of this project's
+CPU-fallback traps report success while silently running on the CPU, which
+turns a 20-minute job into an overnight one:
 
 ```bash
 python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+nvidia-smi
 ```
 
-Then point the agent at the console and let it poll:
+If `torch.cuda.is_available()` is False, stop and fix it. Do not start the
+agent.
+
+### Credentials the instance needs
 
 ```bash
-set DRISHTI_CONSOLE=https://drishti-console.<you>.workers.dev
-set ROBOFLOW_API_KEY=<key>
-set DRISHTI_R2_BUCKET=drishti-runs
-
-python tools/gpu_agent.py --once      # take one job, watch it, then stop
-python tools/gpu_agent.py             # leave it polling
+export DRISHTI_CONSOLE=https://drishti-console.drishti-console.workers.dev
+export ROBOFLOW_API_KEY=<your key>          # stages 14b and 14d
+export DRISHTI_R2_BUCKET=drishti-runs       # where artifacts are uploaded
+npx wrangler login                          # so the agent can write to R2
 ```
 
-Run `--once` first. It takes a single job and exits, so a wiring mistake shows
-up on one recording instead of on the whole queue.
+`ROBOFLOW_API_KEY` is read by `pipeline/chit_detector.py` and
+`pipeline/roboflow_workflow.py`, both of which raise if it is unset rather than
+quietly skipping the stage.
 
-To keep it running after logout, install it as a service (Windows):
+### Run it
 
 ```bash
-schtasks /create /tn DrishtiAgent /sc onstart /ru SYSTEM ^
-  /tr "C:\path\.venv\Scripts\python.exe C:\path\tools\gpu_agent.py"
+python tools/gpu_agent.py --once     # one job, then exit
+python tools/gpu_agent.py            # drain the queue, keep polling
 ```
 
----
+Always start with `--once`. It takes a single job so a wiring mistake shows up
+on one recording rather than on the whole queue, and you can watch the stage
+names go past before committing GPU hours to it.
+
+To keep it alive across an SSH disconnect:
+
+```bash
+nohup python tools/gpu_agent.py > agent.log 2>&1 &
+tail -f agent.log
+```
+
+### Watching from anywhere
+
+```bash
+curl https://drishti-console.drishti-console.workers.dev/api/jobs
+```
+
+Each row carries `state`, `stage`, `progress` and, on failure, the error text
+and the stage it died in.
 
 ## Running it self-hosted instead
 
@@ -230,9 +268,10 @@ npm run dev               # API on 5179, Vite on 5178 proxying /api
 
 ## What is not done
 
-- **Artifact upload from the agent to R2 uses `wrangler`**, so the GPU box needs
-  wrangler authenticated. An S3-API credential would be better and is a small
-  change to `tools/upload-assets.mjs`.
+- **Artifact upload from the agent to R2 uses `wrangler`**, so the GPU instance
+  needs wrangler authenticated interactively. An S3-API credential would be
+  better for an ephemeral instance and is a small change to
+  `tools/upload-assets.mjs`.
 - **No authentication on the console.** Anyone who can reach the URL can review
   and can queue jobs. Cloudflare Access in front of it is the cheapest fix and
   needs no code.

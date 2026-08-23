@@ -239,3 +239,8 @@ secrets.json
 /console/server/*.db
 /console/server/*.db-shm
 /console/server/*.db-wal
+
+# Wrangler's build and local-state scratch. `.wrangler/tmp` is regenerated on
+# every dev run and `.wrangler/state` is the local D1/R2 emulator's data --
+# neither is source, and the state directory is another machine's database.
+/console/.wrangler/
