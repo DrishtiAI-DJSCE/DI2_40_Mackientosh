@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from collections import defaultdict
 from pathlib import Path
 
@@ -122,6 +123,7 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     strip_dir = args.out / "strip"
     strip_dir.mkdir(exist_ok=True)
+    sam3_out = args.out / "sam3"
     manifest: dict[str, dict] = {}
 
     def read_at(pts_ms: float):
@@ -175,6 +177,12 @@ def main() -> int:
         # see, and it exists only for adjudicated frames.
         sam3_name = f"{int(key_pts)}ms_trk{track_id}.jpg"
         if (sam3_dir / sam3_name).exists():
+            # Copy it next to the other crops. Naming the file in the manifest
+            # without putting it where the manifest says it is produced a
+            # console tab that pointed at a 404 -- the reviewer's complaint was
+            # that SAM 3's own output was "not visible", and this was why.
+            sam3_out.mkdir(exist_ok=True)
+            shutil.copyfile(sam3_dir / sam3_name, sam3_out / sam3_name)
             entry["sam3_crop"] = sam3_name
 
         frame = read_at(key_pts)

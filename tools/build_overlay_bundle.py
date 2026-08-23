@@ -110,6 +110,45 @@ def build(run: Path, samples_name: str) -> dict:
     }
 
 
+def frame_size(run: Path) -> tuple[int, int]:
+    """The source frame size, read from the run's own ingest inventory.
+
+    Every coordinate in this bundle is in source pixels, so the consumer needs
+    the frame it was measured against. The console used to hard-code 1280x720
+    beside the media, which is right for most of this corpus and wrong for
+    `04.CCTV Candidate Talking.mkv` -- that one is 640x480, and a canvas told
+    it was 1280x720 draws every box at half scale in the top-left quadrant.
+    Carrying the number the run recorded removes the guess.
+    """
+    seen: list[Path] = []
+    here: Path | None = run
+    # A resumed run keeps only the stages it re-ran; its ingest lives in the
+    # parent it branched from. Walk the chain rather than treating a missing
+    # inventory as "unknown" -- 1512 has no source/ directory at all.
+    while here is not None and here not in seen:
+        seen.append(here)
+        inventory = here / "source" / "video_inventory.jsonl"
+        if inventory.exists():
+            for line in inventory.open(encoding="utf-8"):
+                row = json.loads(line)
+                w, h = row.get("width"), row.get("height")
+                if w and h:
+                    return int(w), int(h)
+        manifest = here / "RUN_MANIFEST.json"
+        parent = None
+        if manifest.exists():
+            parent = json.loads(manifest.read_text(encoding="utf-8")).get(
+                "parent_run_id"
+            )
+        here = here.parent.parent / str(parent) / run.name if parent else None
+
+    raise SystemExit(
+        f"ERROR: no video_inventory.jsonl with width/height for {run} or any "
+        f"parent run ({', '.join(p.name for p in seen)}). Refusing to guess a "
+        f"frame size -- the overlay would be silently misaligned."
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run", type=Path, required=True)
@@ -117,6 +156,11 @@ def main() -> int:
     ap.add_argument("--samples", default="samples_sam3_adjudicated.jsonl",
                     help="which samples file to project; the adjudicated one "
                          "carries the SAM 3 verdicts, so it is the default")
+    ap.add_argument("--frame-size", metavar="WxH",
+                    help="source frame size, for a resumed run whose ingest "
+                         "inventory is not on disk anywhere in its parent "
+                         "chain. Verify it against the media before passing "
+                         "it -- this is the one number nothing else can check")
     args = ap.parse_args()
 
     stage = args.run / "14_person_timeline"
@@ -131,6 +175,11 @@ def main() -> int:
                 break
 
     doc = build(args.run, name)
+    if args.frame_size:
+        w, h = args.frame_size.lower().split("x")
+        doc["width"], doc["height"] = int(w), int(h)
+    else:
+        doc["width"], doc["height"] = frame_size(args.run)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(doc, separators=(",", ":")), encoding="utf-8")
 

@@ -1,39 +1,63 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Bundle } from "./types";
-import type { CropManifest, Decision } from "./review";
-import { PROJECTS, findVideo, firstProcessed } from "./projects";
+import type { CropManifest, Decision, ProjectRef } from "./review";
+import { api, type Assets, type DecisionRow } from "./api";
+import { findVideo, firstProcessed, firstVideo } from "./projects";
+import { Library } from "./components/Library";
 import { Dashboard } from "./screens/Dashboard";
 import { ReviewScreen } from "./screens/ReviewScreen";
+import { DismissedScreen } from "./screens/DismissedScreen";
 import { VideoScreen } from "./screens/VideoScreen";
 import "./App.css";
 
-type Screen = "dashboard" | "review" | "video";
+type Screen = "dashboard" | "review" | "video" | "dismissed";
 
 const SCREENS: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Overview" },
   { id: "review", label: "Review" },
   { id: "video", label: "Video" },
+  { id: "dismissed", label: "Not violations" },
 ];
 
 export default function App() {
-  const start = firstProcessed(PROJECTS);
-  const [videoId, setVideoId] = useState(start?.video.id ?? "");
+  const [projects, setProjects] = useState<ProjectRef[]>([]);
+  const [assets, setAssets] = useState<Assets | null>(null);
+  const [videoId, setVideoId] = useState("");
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [crops, setCrops] = useState<CropManifest>({});
   const [error, setError] = useState<string | null>(null);
-  const [decisions, setDecisions] = useState<Record<number, Decision>>({});
-  const [openCentre, setOpenCentre] = useState<string | null>(
-    start?.centre.id ?? null,
-  );
+  const [decisions, setDecisions] = useState<Record<number, DecisionRow>>({});
+  const [booted, setBooted] = useState(false);
 
-  const found = useMemo(() => findVideo(PROJECTS, videoId), [videoId]);
+  // Load the tree once. Nothing is assumed about its contents -- an empty
+  // console is a real state, not an error.
+  useEffect(() => {
+    Promise.all([api.tree(), api.assets()])
+      .then(([t, a]) => {
+        setProjects(t.projects);
+        setAssets(a);
+        const start = firstProcessed(t.projects) ?? firstVideo(t.projects);
+        if (start) setVideoId(start.video.id);
+      })
+      .catch((e) => setError(String(e instanceof Error ? e.message : e)))
+      .finally(() => setBooted(true));
+  }, []);
+
+  const found = useMemo(
+    () => findVideo(projects, videoId),
+    [projects, videoId],
+  );
   const video = found?.video;
 
+  // Run artifacts and the decisions made against them load together, because
+  // a queue rendered before its decisions arrive would briefly show people the
+  // reviewer has already answered for.
   useEffect(() => {
     if (!video?.bundle) {
       setBundle(null);
       setCrops({});
+      setDecisions({});
       return;
     }
     let live = true;
@@ -48,11 +72,17 @@ export default function App() {
             .then((r) => (r.ok ? r.json() : {}))
             .catch(() => ({}))
         : Promise.resolve({}),
+      api.decisions(video.id).catch(() => ({ current: {}, revisions: 0 })),
     ])
-      .then(([b, c]) => {
+      .then(([b, c, d]) => {
         if (!live) return;
         setBundle(b);
         setCrops(c);
+        setDecisions(
+          Object.fromEntries(
+            Object.values(d.current).map((r) => [r.track_id, r]),
+          ),
+        );
       })
       .catch((e) => live && setError(String(e)));
     return () => {
@@ -60,76 +90,72 @@ export default function App() {
     };
   }, [video]);
 
-  const decide = useCallback((trackId: number, decision: Decision) => {
-    // Append-only in spirit: a later decision replaces the shown state, but
-    // the store keeps one entry per person and the server will keep the full
-    // history once decisions are persisted.
-    setDecisions((d) => ({ ...d, [trackId]: decision }));
-  }, []);
+  /** Write the answer, then reflect it. The row the server hands back is the
+   *  one stored, so the UI shows what was persisted rather than what was
+   *  hoped -- a decision that silently failed to save is worse than one that
+   *  visibly did not. */
+  const decide = useCallback(
+    async (trackId: number, decision: Decision, extra?: Partial<DecisionRow>) => {
+      if (!video) return;
+      const row = await api.decide(video.id, {
+        track_id: trackId,
+        decision,
+        machine_state: extra?.machine_state ?? null,
+        key_class: extra?.key_class ?? null,
+        key_verdict: extra?.key_verdict ?? null,
+        key_pts_ms: extra?.key_pts_ms ?? null,
+      });
+      setDecisions((d) => ({ ...d, [trackId]: row }));
+      setProjects((ps) =>
+        ps.map((p) => ({
+          ...p,
+          centres: p.centres.map((c) => ({
+            ...c,
+            videos: c.videos.map((v) =>
+              v.id === video.id
+                ? { ...v, decided: (v.decided ?? 0) + (decisions[trackId] ? 0 : 1) }
+                : v,
+            ),
+          })),
+        })),
+      );
+    },
+    [video, decisions],
+  );
+
+  const plain: Record<number, Decision> = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(decisions).map(([k, v]) => [Number(k), v.decision]),
+      ),
+    [decisions],
+  );
 
   return (
     <div className="app">
-      <nav className="rail">
-        <div className="rail__brand">
-          <span className="rail__mark" aria-hidden="true" />
-          <b>Drishti</b>
-        </div>
-
-        {PROJECTS.map((project) => (
-          <div key={project.id} className="rail__project">
-            <p className="rail__ptitle">{project.name}</p>
-            {project.centres.map((centre) => {
-              const open = openCentre === centre.id;
-              return (
-                <div key={centre.id}>
-                  <button
-                    className="rail__centre"
-                    aria-expanded={open}
-                    onClick={() => setOpenCentre(open ? null : centre.id)}
-                  >
-                    <span>{centre.name}</span>
-                    <b className="mono">{centre.videos.length}</b>
-                  </button>
-                  {open && (
-                    <ul className="rail__videos">
-                      {centre.videos.map((v) => (
-                        <li key={v.id}>
-                          <button
-                            className={v.id === videoId ? "is-on" : ""}
-                            disabled={!v.processed}
-                            title={
-                              v.processed
-                                ? v.name
-                                : `${v.name} — not processed yet`
-                            }
-                            onClick={() => {
-                              setVideoId(v.id);
-                              setScreen("dashboard");
-                            }}
-                          >
-                            <span>{v.name}</span>
-                            {!v.processed && <em>not run</em>}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-
-        <button className="rail__new" type="button" disabled>
-          + New project
-        </button>
-      </nav>
+      <Library
+        projects={projects}
+        assets={assets}
+        videoId={videoId}
+        onPick={(id) => {
+          setVideoId(id);
+          setScreen("dashboard");
+        }}
+        onChanged={(next) => {
+          setProjects(next);
+          if (!findVideo(next, videoId)) {
+            setVideoId(
+              (firstProcessed(next) ?? firstVideo(next))?.video.id ?? "",
+            );
+          }
+        }}
+      />
 
       <div className="shell">
         <header className="top">
           <div className="top__where">
             <span className="mono">
-              {found?.project.name} / {found?.centre.name}
+              {found ? `${found.project.name} / ${found.centre.name}` : " "}
             </span>
             <h1>{video?.name ?? "No recording selected"}</h1>
           </div>
@@ -150,7 +176,15 @@ export default function App() {
         <main className="main">
           {error && <p className="state state--err">{error}</p>}
 
-          {!video?.processed && (
+          {booted && projects.length === 0 && !error && (
+            <p className="state">
+              Nothing here yet. Create a project in the sidebar — an exam —
+              then a centre inside it, then attach the recordings from each
+              hall.
+            </p>
+          )}
+
+          {video && !video.processed && (
             <p className="state">
               This recording has not been processed yet. Run the pipeline on it
               to see findings — an empty dashboard would read like
@@ -167,7 +201,7 @@ export default function App() {
               bundle={bundle}
               crops={crops}
               video={video!}
-              decisions={decisions}
+              decisions={plain}
               onReview={() => setScreen("review")}
             />
           )}
@@ -185,8 +219,22 @@ export default function App() {
           {bundle && screen === "video" && (
             <VideoScreen
               bundle={bundle}
+              crops={crops}
               videoSrc={video!.video ?? ""}
               overlaySrc={video!.overlay ?? ""}
+              decisions={plain}
+            />
+          )}
+
+          {bundle && screen === "dismissed" && (
+            <DismissedScreen
+              bundle={bundle}
+              crops={crops}
+              cropBase={video!.crops ?? ""}
+              decisions={decisions}
+              onRestore={(trackId, extra) =>
+                void decide(trackId, "needs_better_view", extra)
+              }
             />
           )}
         </main>

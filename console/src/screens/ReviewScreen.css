@@ -452,17 +452,40 @@
   gap: 0.5rem;
 }
 
-.rv__thumbs figure {
+/* Each sampled moment is a control, not a picture: clicking one opens it in
+   the stage above. It looks clickable because it is. */
+.rv__thumbs button {
+  display: block;
+  width: 100%;
   margin: 0;
+  padding: 0;
   border: 1px solid var(--rule);
   border-radius: 7px;
   overflow: hidden;
   background: var(--surface);
+  cursor: pointer;
+  transition:
+    transform var(--fast) var(--spring),
+    border-color var(--fast) var(--spring);
 }
 
-.rv__thumbs figure.is-strong {
+.rv__thumbs button:hover {
+  transform: translateY(-2px);
+  border-color: var(--rule-strong);
+}
+
+.rv__thumbs button:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.rv__thumbs button.is-strong {
   border-color: var(--lane-object);
   box-shadow: 0 0 0 1px var(--lane-object);
+}
+
+.rv__thumbs button.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .rv__thumbs img {
@@ -473,9 +496,132 @@
   background: #000;
 }
 
-.rv__thumbs figcaption {
+.rv__thumbs button span {
+  display: block;
   padding: 0.25rem 0.35rem;
   font-size: 0.58rem;
   color: var(--slate);
   text-align: center;
+}
+
+/* The stage's own source switch: key frame, the wide shot, or the crop the
+   referee actually looked at. */
+.rv__views {
+  display: flex;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.45rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+
+.rv__views button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--slate);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  padding: 0.4em 0.7em;
+  cursor: pointer;
+  transition:
+    background var(--fast) var(--spring),
+    color var(--fast) var(--spring);
+}
+
+.rv__views button:hover {
+  color: var(--ink);
+}
+
+.rv__views button.is-on {
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* An answer has to be visible, or the reviewer cannot tell a saved decision
+   from a dropped keystroke. It stays until it is replaced. */
+.rv__flash {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 0.85rem;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  animation: rv-in var(--base) var(--spring);
+}
+
+@keyframes rv-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.rv__flash b {
+  font-family: var(--display);
+  font-size: 0.92rem;
+}
+
+.rv__flash span {
+  font-size: 0.86rem;
+  opacity: 0.85;
+  flex: 1 1 14rem;
+}
+
+.rv__flash button {
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  padding: 0.35em 0.7em;
+  cursor: pointer;
+}
+
+.rv__flash kbd {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  opacity: 0.6;
+}
+
+.rv__flash.is-human_confirmed {
+  background: var(--s-confirm-bg);
+  color: var(--s-confirm);
+}
+
+.rv__flash.is-human_dismissed {
+  background: var(--s-dismiss-bg);
+  color: var(--s-dismiss);
+}
+
+.rv__flash.is-needs_better_view {
+  background: var(--s-abstain-bg);
+  color: var(--s-abstain);
+}
+
+.rv__see {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--slate);
+  cursor: pointer;
+  padding-right: 0.3rem;
+}
+
+.rv__toggle {
+  align-self: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  padding: 0.5em 0.9em;
+  cursor: pointer;
 }

@@ -110,6 +110,19 @@ const VERDICT_LABEL: Record<string, string> = {
   suppressed: "Called desk equipment",
 };
 
+/** What a reviewer's own answer is called back to them. Phrased as the thing
+ *  they decided, not as a state name -- "dismissed by reviewer" describes the
+ *  record; "not a violation" describes what they said. */
+const DECISION_LABEL: Record<string, string> = {
+  human_confirmed: "confirmed",
+  human_dismissed: "marked not a violation",
+  needs_better_view: "left open for a second look",
+};
+
+export function decisionLabel(decision: string): string {
+  return DECISION_LABEL[decision] ?? humanizeCode(decision);
+}
+
 export function reasonLabel(code: string): string {
   return REASON_LABEL[code] ?? humanizeCode(code);
 }
