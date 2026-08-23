@@ -208,3 +208,14 @@
   color: var(--slate);
   max-width: 46rem;
 }
+
+@media (max-width: 40rem) {
+  .up__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .up__actions button {
+    flex: 1 1 100%;
+    min-height: 2.8rem;
+  }
+}

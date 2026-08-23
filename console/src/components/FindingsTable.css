@@ -238,3 +238,18 @@
   padding: 0.5em 1em;
   cursor: pointer;
 }
+
+@media (max-width: 40rem) {
+  .ft {
+    padding: 0.8rem 0.7rem 0.7rem;
+  }
+
+  .ft h3 span {
+    font-size: 0.56rem;
+  }
+
+  /* Rows stay tappable even though the table itself scrolls sideways. */
+  .ft td {
+    padding: 0.6rem 0.5rem;
+  }
+}

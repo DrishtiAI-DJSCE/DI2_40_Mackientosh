@@ -30,6 +30,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<Record<number, DecisionRow>>({});
   const [booted, setBooted] = useState(false);
+  // The rail is a drawer on a phone. Closed by default there, and closed
+  // again after any navigation -- a menu that stays open over the thing you
+  // just chose is a menu you have to dismiss twice.
+  const [navOpen, setNavOpen] = useState(false);
 
   // Load the tree once. Nothing is assumed about its contents -- an empty
   // console is a real state, not an error.
@@ -144,14 +148,23 @@ export default function App() {
   );
 
   return (
-    <div className="app">
+    <div className={`app ${navOpen ? "is-nav" : ""}`}>
+      <button
+        type="button"
+        className="app__scrim"
+        aria-label="Close navigation"
+        tabIndex={navOpen ? 0 : -1}
+        onClick={() => setNavOpen(false)}
+      />
       <Library
         projects={projects}
         assets={assets}
         videoId={videoId}
+        open={navOpen}
         onPick={(id) => {
           setVideoId(id);
           setScreen("dashboard");
+          setNavOpen(false);
         }}
         onChanged={(next) => {
           setProjects(next);
@@ -165,6 +178,19 @@ export default function App() {
 
       <div className="shell">
         <header className="top">
+          <button
+            type="button"
+            className="top__menu"
+            aria-expanded={navOpen}
+            aria-label="Recordings"
+            onClick={() => setNavOpen((o) => !o)}
+          >
+            <svg viewBox="0 0 16 14" aria-hidden="true">
+              <rect y="1" width="16" height="2" rx="1" />
+              <rect y="6" width="16" height="2" rx="1" />
+              <rect y="11" width="16" height="2" rx="1" />
+            </svg>
+          </button>
           <div className="top__where">
             <span className="mono">
               {found ? `${found.project.name} / ${found.centre.name}` : " "}

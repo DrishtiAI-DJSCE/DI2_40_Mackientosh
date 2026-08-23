@@ -625,3 +625,91 @@
   padding: 0.5em 0.9em;
   cursor: pointer;
 }
+
+/* ------------------------------------------------------------------ phone */
+
+@media (max-width: 40rem) {
+  /* Decisions are thumb targets, and they are the only thing on this screen
+     that must never require aiming. Two rows of two, full width, docked. */
+  .rv__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    bottom: 0;
+    margin: 0 -0.85rem -4rem;
+    border-radius: 12px 12px 0 0;
+    padding: 0.6rem 0.85rem calc(0.6rem + env(safe-area-inset-bottom));
+  }
+
+  .rv__actions button {
+    flex: none;
+    min-height: 3rem;
+    font-size: 0.86rem;
+    padding: 0.5em 0.4em;
+  }
+
+  .is-plain {
+    flex: none !important;
+    grid-column: 1 / -1;
+    min-height: 2.4rem !important;
+  }
+
+  /* Keyboard hints are meaningless without a keyboard. */
+  .rv__actions kbd,
+  .rv__flash kbd {
+    display: none;
+  }
+
+  .rv__top {
+    gap: 0.5rem;
+  }
+
+  .rv__progress {
+    flex: 1 1 100%;
+  }
+
+  .rv__progress span {
+    font-size: 0.58rem;
+    white-space: normal;
+  }
+
+  .rv__nav {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .rv__nav button {
+    flex: 1;
+    min-height: 2.4rem;
+  }
+
+  .rv__see {
+    order: -1;
+  }
+
+  .rv__shot img {
+    max-height: 52vh;
+  }
+
+  .rv__views {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .rv__views::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rv__views button {
+    white-space: nowrap;
+  }
+
+  .rv__thumbs {
+    grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
+  }
+
+  .rv__who h2 {
+    font-size: 1.1rem;
+  }
+}

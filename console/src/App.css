@@ -279,3 +279,136 @@
   color: var(--ink-2);
   line-height: 1.55;
 }
+
+/* ------------------------------------------------------------------ phone */
+
+/* The hamburger only exists below the breakpoint; above it the rail is
+   permanent and a button that opens what is already open is noise. */
+.top__menu {
+  display: none;
+}
+
+.app__scrim {
+  display: none;
+}
+
+@media (max-width: 54rem) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  /* The rail was 415px of navigation stacked above the content: on an 812px
+     phone you scrolled past a full screen of menu before reaching anything.
+     It is a drawer here instead. */
+  .lib {
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(20rem, 84vw);
+    height: 100dvh;
+    border-right: 1px solid var(--rule);
+    border-bottom: 0;
+    transform: translateX(-101%);
+    transition: transform var(--base) var(--spring);
+    box-shadow: var(--sh-lift);
+    will-change: transform;
+  }
+
+  /* The class is on the rail itself rather than on an ancestor: a descendant
+     selector here lost to the base rule in a way that was not worth chasing,
+     and an element carrying its own state cannot lose that fight. */
+  .lib.is-open {
+    transform: translateX(0);
+  }
+
+  .app__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    border: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--base) var(--spring);
+  }
+
+  .app.is-nav .app__scrim,
+  .is-nav .app__scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .top__menu {
+    display: grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    flex: none;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .top__menu svg {
+    width: 1rem;
+    fill: currentColor;
+  }
+
+  .top {
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 0.85rem;
+  }
+
+  .top__where {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* One line each, truncated. A wrapping title pushed the tabs below the
+     fold on the narrowest phones. */
+  .top__where h1 {
+    font-size: 1.02rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top__where span {
+    display: block;
+    font-size: 0.56rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Tabs scroll rather than wrap: four of them wrapped to two rows and cost
+     another 40px of vertical space above every screen. */
+  .top__tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .top__tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .top__tabs button {
+    white-space: nowrap;
+    font-size: 0.78rem;
+    padding: 0.4em 0.8em;
+  }
+
+  .main {
+    padding: 0.9rem 0.85rem 4rem;
+  }
+}
