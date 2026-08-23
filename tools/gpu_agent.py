@@ -45,6 +45,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
+# Run as `python tools/gpu_agent.py`, the repository root is not on the path,
+# so `from pipeline import artifacts` fails with ModuleNotFoundError. The
+# stage tools are launched as subprocesses with cwd=REPO and are unaffected;
+# this is only for the one import this file makes itself.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
 # The stages this agent runs, in order, as (label, argv-builder, share of the
 # progress bar).
 #
@@ -59,10 +66,24 @@ REPO = Path(__file__).resolve().parents[1]
 # person detection, tracking and pose in one pass and dominates everything
 # else; SAM 3 is network-bound and comes third. A bar that advanced linearly
 # across seven stages would sit near 15% for most of a job.
-def _stages(run_dir, source):
+EXPERIMENT = "configs/experiments/product_zero.yaml"
+
+
+def _stages(run_dir, source, run_key):
     """The pipeline chain for one recording, as argv lists."""
     py = sys.executable
     return [
+        # Stage 0. Preflight is not optional bookkeeping: it creates the run
+        # directory, writes RUN_MANIFEST.json, and probes every model for
+        # launchability. Every later stage calls `RunManifest.read`, so without
+        # it stage 14 dies immediately on a missing manifest -- measured.
+        #
+        # It also records which models resolved to CUDA and which fell back,
+        # which is the only durable evidence of whether a run was actually on
+        # the GPU.
+        ("00_preflight", 0.02,
+         [py, "tools/preflight_rtx3090.py", "--experiment", EXPERIMENT,
+          "--run-id", run_key, "--sources", str(source)]),
         # Stage 14: sampling, person detection, IoU tracking, AlphaPose, and
         # D-FINE objects associated to wrists. Everything on the GPU.
         ("14_person_timeline", 0.62,
@@ -137,25 +158,65 @@ class Console:
         return target
 
 
-def run_stage(cmd: list[str], stage: str) -> None:
+def run_stage(cmd: list[str], stage: str, produces: Path | None = None) -> None:
     """Run one stage, and fail loudly if it fails.
 
-    `check=True` matters: a stage that exits non-zero has not produced the
-    artifacts the next stage reads, and continuing would eventually surface as
-    an empty result rather than as the error it is.
+    A non-zero exit normally means the stage did not produce what the next one
+    reads, and continuing would surface later as an empty result rather than as
+    the error it is. So the default is to raise.
+
+    `produces` is the one exception, and it exists for preflight. Preflight
+    exits 1 when *any* declared configuration is unavailable, which is right
+    for its own purpose -- it is a launchability report -- but on this corpus
+    the only missing one is the local Gemma VLM checkpoint, and that stage was
+    retired in favour of hosted inference. Treating that as fatal would block
+    every run over a model nothing in this chain loads. When `produces` is
+    given and the file exists, the stage did its job whatever it thought of the
+    model table; if a CV model really is missing, stage 14 fails on it a moment
+    later with a specific error, which is a better place to find out.
     """
     print(f"  $ {' '.join(str(c) for c in cmd)}", flush=True)
     proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-25:]
-        raise RuntimeError(f"{stage} exited {proc.returncode}:\n" + "\n".join(tail))
+    if proc.returncode == 0:
+        return
+    if produces is not None and produces.exists():
+        print(f"  ({stage} exited {proc.returncode} but produced "
+              f"{produces.name}; continuing)", flush=True)
+        return
+    tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-25:]
+    raise RuntimeError(f"{stage} exited {proc.returncode}:\n" + "\n".join(tail))
+
+
+def probe_frame_size(video: Path) -> tuple[int, int]:
+    """The source frame size, measured from the media itself."""
+    import cv2
+
+    cap = cv2.VideoCapture(str(video))
+    try:
+        if not cap.isOpened():
+            raise RuntimeError(f"cannot open {video} to measure its frame size")
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    finally:
+        cap.release()
+    if not w or not h:
+        raise RuntimeError(f"{video} reported a {w}x{h} frame size")
+    return w, h
 
 
 def process(console: Console, job: dict, video: dict, *, keep: bool) -> str:
     """Take one job from claimed to a finished run key."""
     job_id = job["id"]
     run_key = f"job{job_id}"
-    run_dir = REPO / "artifacts" / "runs" / "jobs" / run_key
+    runs_root = REPO / "artifacts" / "runs"
+    run_dir = runs_root / run_key
+
+    # Run ids are immutable and `create_run` refuses an existing directory, so
+    # a retry of the same job has to start from a clean one. Only ever the
+    # directory this agent created for this job id.
+    if run_dir.exists():
+        print(f"  clearing previous attempt at {run_dir}", flush=True)
+        shutil.rmtree(run_dir)
 
     source = console.download(
         video["media_url"],
@@ -164,10 +225,14 @@ def process(console: Console, job: dict, video: dict, *, keep: bool) -> str:
     print(f"  downloaded {source} ({source.stat().st_size / 1e6:.1f} MB)", flush=True)
 
     done = 0.0
-    for stage, weight, argv in _stages(run_dir, source):
+    for stage, weight, argv in _stages(run_dir, source, run_key):
         console.report(job_id, "running", stage=stage, progress=round(done, 3))
         print(f"[{done:5.0%}] {stage}", flush=True)
-        run_stage(argv, stage)
+        run_stage(
+            argv,
+            stage,
+            produces=run_dir / "RUN_MANIFEST.json" if stage == "00_preflight" else None,
+        )
         done += weight
 
     # The console reads three derived artifacts, not the run directory itself.
@@ -176,8 +241,16 @@ def process(console: Console, job: dict, video: dict, *, keep: bool) -> str:
     run_stage([sys.executable, "tools/build_console_bundle.py",
                "--run", str(run_dir), "--out", str(out / "data" / f"{run_key}.json")],
               "bundle")
+    # The overlay bundler refuses to guess a frame size, and rightly so -- a
+    # bundle built against the wrong one draws every box in the wrong place,
+    # silently. It normally reads the size from the ingest inventory, but a run
+    # created by preflight has no `source/video_inventory.jsonl`, so the size is
+    # measured from the media here and passed explicitly.
+    width, height = probe_frame_size(source)
+    print(f"  source frame size {width}x{height}", flush=True)
     run_stage([sys.executable, "tools/build_overlay_bundle.py",
                "--run", str(run_dir),
+               "--frame-size", f"{width}x{height}",
                "--out", str(out / "data" / f"{run_key}.overlay.json")],
               "overlay")
     run_stage([sys.executable, "tools/build_review_crops.py",
