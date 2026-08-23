@@ -48,7 +48,7 @@ const bad = (status, message) => ({ status, body: { error: message } });
  * @param assets      () => Promise<{media,bundles,overlays,crops}>
  * @param describe    (payload) => Promise<{status, body}>  the vision proxy
  */
-export function makeRouter({ store, assets, describe }) {
+export function makeRouter({ store, assets, describe, agentToken }) {
   async function tree() {
     const [projects, centres, videos, decided] = await Promise.all([
       store.all("SELECT * FROM projects ORDER BY created_utc"),
@@ -352,6 +352,21 @@ export function makeRouter({ store, assets, describe }) {
      * the new one's status.
      */
     if (method === "POST" && pathname === "/api/jobs/claim") {
+      // An unauthenticated claim endpoint on a public URL lets a stranger
+      // drain the queue -- and worse, on a rented GPU billed by the hour, it
+      // lets them spend someone else's money. The token is required whenever
+      // one is configured; a deployment without one is refused rather than
+      // silently open.
+      if (!agentToken) {
+        return bad(
+          503,
+          "No agent token is configured on this deployment, so the job queue " +
+            "is closed. Set AGENT_TOKEN (or the Worker secret) and restart.",
+        );
+      }
+      if (body?.agent_token !== agentToken) {
+        return bad(403, "Wrong or missing agent token.");
+      }
       const agent = String(body?.agent ?? "unknown").slice(0, 120);
       const job = await store.get(
         "SELECT * FROM jobs WHERE state = 'queued' ORDER BY id LIMIT 1",

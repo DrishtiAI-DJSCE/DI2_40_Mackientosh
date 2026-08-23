@@ -18,12 +18,16 @@ export function Library({
   projects,
   assets,
   videoId,
+  open: navOpen = true,
   onPick,
   onChanged,
 }: {
   projects: ProjectRef[];
   assets: Assets | null;
   videoId: string;
+  /** Drawer state on a phone. Above the breakpoint the rail is permanent and
+   *  this is ignored. */
+  open?: boolean;
   onPick: (id: string) => void;
   onChanged: (projects: ProjectRef[]) => void;
 }) {
@@ -48,7 +52,18 @@ export function Library({
   };
 
   return (
-    <nav className="lib">
+    <nav
+      className={`lib ${navOpen ? "is-open" : ""}`}
+      style={
+        typeof window !== "undefined" && window.matchMedia("(max-width: 54rem)").matches
+          ? {
+            transform: navOpen ? "translateX(0)" : "translateX(-101%)",
+            visibility: navOpen ? "visible" : "hidden",
+          }
+          : undefined
+      }
+      aria-hidden={undefined}
+    >
       <div className="lib__brand">
         <span className="lib__mark" aria-hidden="true" />
         <b>Drishti</b>

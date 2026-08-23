@@ -213,3 +213,55 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------ phone */
+
+@media (max-width: 40rem) {
+  /* The step buttons are the point of this player, so they keep their size
+     and the strip scrolls rather than shrinking them below a thumb. */
+  .wipe__transport {
+    gap: 0.45rem;
+    padding: 0.45rem 0.5rem calc(0.45rem + env(safe-area-inset-bottom));
+  }
+
+  .wipe__steps {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .wipe__steps::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wipe__steps button {
+    min-width: 2.6rem;
+    min-height: 2rem;
+    font-size: 0.64rem;
+  }
+
+  .wipe__play {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .wipe__clock {
+    font-size: 0.68rem;
+  }
+
+  .wipe__speed span {
+    display: none;
+  }
+
+  /* The wipe handle needs a bigger grab area with a finger than a pointer. */
+  .wipe__handle::before {
+    inset: 0 -18px;
+  }
+
+  .wipe__handle i {
+    width: 2.4rem;
+    height: 2.4rem;
+  }
+}

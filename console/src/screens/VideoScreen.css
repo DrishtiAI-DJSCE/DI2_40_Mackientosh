@@ -369,3 +369,49 @@
   color: var(--slate);
   line-height: 1.5;
 }
+
+/* ------------------------------------------------------------------ phone */
+
+@media (max-width: 62rem) {
+  .video__aside {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 40rem) {
+  /* The person list is 236 rows. Sticky and full height on a phone it becomes
+     the whole page; capped and scrollable it stays a control. */
+  .video__people {
+    max-height: 14rem;
+    overflow-y: auto;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 0.25rem;
+  }
+
+  .ftiles {
+    grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  }
+
+  .ribbon__band {
+    height: 2.6rem;
+  }
+
+  .video__layers {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    padding-bottom: 0.2rem;
+  }
+
+  .video__layers::-webkit-scrollbar {
+    display: none;
+  }
+
+  .video__layers button {
+    white-space: nowrap;
+    min-height: 2.1rem;
+  }
+}
