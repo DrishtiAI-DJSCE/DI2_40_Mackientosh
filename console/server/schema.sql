@@ -95,6 +95,46 @@ JOIN (
   GROUP BY video_id, track_id
 ) last ON last.id = d.id;
 
+-- ----------------------------------------------------------- intervals --
+--
+-- A stretch of a recording a human marked, by hand, on the timeline.
+--
+-- This is the one kind of claim in the system that no model produced. A
+-- reviewer watched the video, saw something between two timestamps, and said
+-- so. It is kept apart from `decisions` because a decision is about a *person*
+-- (a track id) and this is about a *span* -- often before anyone knows which
+-- track, or covering several people, or covering a person tracking never
+-- resolved at all.
+--
+-- Append-only for the same reason decisions are: this is training data. A
+-- reviewer who marks a stretch and later retracts it writes a second row with
+-- `retracted = 1`, and both survive. "Marked then retracted" is a more
+-- informative example than either alone.
+--
+-- These spans are also what stage 3 of the clip database cuts on: a confirmed
+-- interval is exactly the clip worth keeping.
+CREATE TABLE IF NOT EXISTS intervals (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id     TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  from_ms      REAL NOT NULL,
+  to_ms        REAL NOT NULL,
+  -- What the reviewer is asserting. `violation` is the strong one and is the
+  -- only value drawn in alarm colour; `review` means "look here", which is a
+  -- weaker and much more common claim.
+  kind         TEXT NOT NULL DEFAULT 'violation'
+               CHECK (kind IN ('violation','review','note')),
+  -- Optional: which person, when the reviewer knows. Null is normal and does
+  -- not weaken the mark.
+  track_id     INTEGER,
+  note         TEXT,
+  retracted    INTEGER NOT NULL DEFAULT 0 CHECK (retracted IN (0,1)),
+  reviewer     TEXT NOT NULL DEFAULT 'local',
+  created_utc  TEXT NOT NULL,
+  CHECK (to_ms > from_ms)
+);
+
+CREATE INDEX IF NOT EXISTS intervals_by_video ON intervals(video_id, from_ms);
+
 -- ---------------------------------------------------------------- jobs --
 --
 -- A processing job, from "a video was uploaded" to "a run exists".

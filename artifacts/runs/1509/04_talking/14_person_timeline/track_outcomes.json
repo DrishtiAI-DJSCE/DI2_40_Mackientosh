@@ -10,50 +10,53 @@
    "OBJECT_AT_WRIST",
    "OBJECT_AWAY_FROM_WRIST",
    "OBJECT_TOO_LARGE",
+   "SAM3_PHONE_NAMED",
+   "SAM3_SUPPORTED",
    "SAM3_EQUIPMENT_CONTEXT",
    "SAM3_NOT_CONFIRMED",
    "SAM3_UNAVAILABLE",
    "OBJECT_HANDLING_SUSTAINED",
    "OBJECT_HANDLING_RECURRENT",
-   "ORIENTATION_CHANGE_FREQUENT"
+   "ORIENTATION_CHANGE_FREQUENT",
+   "OBJECT_NO_WRIST_RESOLVED"
   ],
   "modalities": [],
-  "priority": 0.0,
+  "priority": 1.5,
   "conditions": [
    {
     "name": "proposal_survives_geometry",
     "passed": true,
-    "detail": "307 of 445 proposals were at a wrist and small enough, across 32 episode(s)"
+    "detail": "179 of 445 proposals were at a wrist and small enough, across 39 episode(s)"
    },
    {
     "name": "sam3_supports_or_cannot_exclude",
-    "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 21, called equipment 16"
+    "passed": true,
+    "detail": "SAM 3 supported 6 of 519 adjudication(s) (1%), named a phone 12, could not confirm 343, called equipment 158"
    },
    {
     "name": "associated_with_this_person",
-    "passed": true,
-    "detail": "a wrist resolved in 100% of this person's sightings"
+    "passed": false,
+    "detail": "0 of 12 SAM 3 phone-supported frame(s) were within 0.75 person widths of this track's wrist"
    },
    {
     "name": "lasts_or_recurs",
     "passed": true,
-    "detail": "longest continuous handling 21.8s, 83.2s in total across 32 episode(s)"
+    "detail": "longest continuous handling 5.0s, 52.0s in total across 39 episode(s)"
    },
    {
     "name": "no_dominant_equipment_explanation",
     "passed": true,
-    "detail": "43% of adjudicated proposals at this seat were named workstation equipment"
+    "detail": "30% of adjudicated proposals at this seat were named workstation equipment"
    }
   ],
   "funnel": {
    "proposals": 445,
-   "gated": 307,
-   "sam3_supported": 0,
-   "sam3_equipment": 16,
-   "sam3_not_confirmed": 21,
-   "sam3_unavailable": 298,
-   "sam3_phone": 0
+   "gated": 179,
+   "sam3_supported": 6,
+   "sam3_equipment": 158,
+   "sam3_not_confirmed": 343,
+   "sam3_unavailable": 81,
+   "sam3_phone": 12
   }
  },
  {
@@ -68,7 +71,7 @@
    "OBJECT_AWAY_FROM_WRIST",
    "OBJECT_TOO_LARGE",
    "SAM3_EQUIPMENT_CONTEXT",
-   "SAM3_UNAVAILABLE",
+   "SAM3_NOT_CONFIRMED",
    "ORIENTATION_AWAY_SUSTAINED",
    "ORIENTATION_CHANGE_FREQUENT",
    "ORIENTATION_DOWN_PROLONGED"
@@ -81,12 +84,12 @@
    {
     "name": "proposal_survives_geometry",
     "passed": true,
-    "detail": "3 of 577 proposals were at a wrist and small enough, across 2 episode(s)"
+    "detail": "2 of 577 proposals were at a wrist and small enough, across 1 episode(s)"
    },
    {
     "name": "sam3_supports_or_cannot_exclude",
     "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 0, called equipment 5"
+    "detail": "SAM 3 supported 0 of 71 adjudication(s) (0%), named a phone 0, could not confirm 19, called equipment 52"
    },
    {
     "name": "associated_with_this_person",
@@ -96,28 +99,28 @@
    {
     "name": "lasts_or_recurs",
     "passed": false,
-    "detail": "longest continuous handling 1.0s, 1.2s in total across 2 episode(s)"
+    "detail": "longest continuous handling 1.0s, 1.0s in total across 1 episode(s)"
    },
    {
     "name": "no_dominant_equipment_explanation",
     "passed": false,
-    "detail": "100% of adjudicated proposals at this seat were named workstation equipment"
+    "detail": "73% of adjudicated proposals at this seat were named workstation equipment"
    }
   ],
   "funnel": {
    "proposals": 577,
-   "gated": 3,
+   "gated": 2,
    "sam3_supported": 0,
-   "sam3_equipment": 5,
-   "sam3_not_confirmed": 0,
-   "sam3_unavailable": 3,
+   "sam3_equipment": 52,
+   "sam3_not_confirmed": 19,
+   "sam3_unavailable": 0,
    "sam3_phone": 0
   }
  },
  {
   "track_id": 3,
   "seat": "unattributed",
-  "state": "needs_better_view",
+  "state": "review_candidate",
   "reason_codes": [
    "SEAT_UNCALIBRATED",
    "TALKING_NOT_MEASURABLE",
@@ -126,6 +129,7 @@
    "OBJECT_AWAY_FROM_WRIST",
    "OBJECT_TOO_LARGE",
    "OBJECT_NO_WRIST_RESOLVED",
+   "SAM3_PHONE_NAMED",
    "SAM3_EQUIPMENT_CONTEXT",
    "SAM3_NOT_CONFIRMED",
    "SAM3_UNAVAILABLE",
@@ -133,49 +137,51 @@
    "OBJECT_HANDLING_RECURRENT",
    "ORIENTATION_DOWN_PROLONGED"
   ],
-  "modalities": [],
-  "priority": 0.0,
+  "modalities": [
+   "object_at_hands"
+  ],
+  "priority": 19.0,
   "conditions": [
    {
     "name": "proposal_survives_geometry",
     "passed": true,
-    "detail": "241 of 603 proposals were at a wrist and small enough, across 18 episode(s)"
+    "detail": "184 of 603 proposals were at a wrist and small enough, across 21 episode(s)"
    },
    {
     "name": "sam3_supports_or_cannot_exclude",
-    "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 9, called equipment 8"
+    "passed": true,
+    "detail": "only 139 of 268 crops came back from SAM 3 (52%, floor 67%); not enough of this person's evidence was adjudicated to draw a conclusion either way"
    },
    {
     "name": "associated_with_this_person",
     "passed": true,
-    "detail": "a wrist resolved in 83% of this person's sightings"
+    "detail": "1 of 2 SAM 3 phone-supported frame(s) were within 0.75 person widths of this track's wrist"
    },
    {
     "name": "lasts_or_recurs",
     "passed": true,
-    "detail": "longest continuous handling 14.8s, 64.5s in total across 18 episode(s)"
+    "detail": "longest continuous handling 9.8s, 51.2s in total across 21 episode(s)"
    },
    {
     "name": "no_dominant_equipment_explanation",
     "passed": true,
-    "detail": "47% of adjudicated proposals at this seat were named workstation equipment"
+    "detail": "38% of adjudicated proposals at this seat were named workstation equipment"
    }
   ],
   "funnel": {
    "proposals": 603,
-   "gated": 241,
+   "gated": 184,
    "sam3_supported": 0,
-   "sam3_equipment": 8,
-   "sam3_not_confirmed": 9,
-   "sam3_unavailable": 228,
-   "sam3_phone": 0
+   "sam3_equipment": 53,
+   "sam3_not_confirmed": 84,
+   "sam3_unavailable": 129,
+   "sam3_phone": 2
   }
  },
  {
   "track_id": 5,
   "seat": "unattributed",
-  "state": "needs_better_view",
+  "state": "review_candidate",
   "reason_codes": [
    "SEAT_UNCALIBRATED",
    "TALKING_NOT_MEASURABLE",
@@ -190,18 +196,20 @@
    "OBJECT_HANDLING_SUSTAINED",
    "OBJECT_HANDLING_RECURRENT"
   ],
-  "modalities": [],
-  "priority": 0.0,
+  "modalities": [
+   "object_at_hands"
+  ],
+  "priority": 11.0,
   "conditions": [
    {
     "name": "proposal_survives_geometry",
     "passed": true,
-    "detail": "396 of 521 proposals were at a wrist and small enough, across 18 episode(s)"
+    "detail": "249 of 521 proposals were at a wrist and small enough, across 31 episode(s)"
    },
    {
     "name": "sam3_supports_or_cannot_exclude",
-    "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 17, called equipment 4"
+    "passed": true,
+    "detail": "only 165 of 360 crops came back from SAM 3 (46%, floor 67%); not enough of this person's evidence was adjudicated to draw a conclusion either way"
    },
    {
     "name": "associated_with_this_person",
@@ -211,21 +219,21 @@
    {
     "name": "lasts_or_recurs",
     "passed": true,
-    "detail": "longest continuous handling 27.2s, 107.8s in total across 18 episode(s)"
+    "detail": "longest continuous handling 11.0s, 70.0s in total across 31 episode(s)"
    },
    {
     "name": "no_dominant_equipment_explanation",
     "passed": true,
-    "detail": "19% of adjudicated proposals at this seat were named workstation equipment"
+    "detail": "39% of adjudicated proposals at this seat were named workstation equipment"
    }
   ],
   "funnel": {
    "proposals": 521,
-   "gated": 396,
+   "gated": 249,
    "sam3_supported": 0,
-   "sam3_equipment": 4,
-   "sam3_not_confirmed": 17,
-   "sam3_unavailable": 378,
+   "sam3_equipment": 64,
+   "sam3_not_confirmed": 101,
+   "sam3_unavailable": 195,
    "sam3_phone": 0
   }
  },
@@ -238,7 +246,6 @@
    "TALKING_NOT_MEASURABLE",
    "OBJECT_PROPOSAL_PAPER",
    "OBJECT_AT_WRIST",
-   "OBJECT_AWAY_FROM_WRIST",
    "OBJECT_TOO_LARGE",
    "SAM3_EQUIPMENT_CONTEXT",
    "SAM3_NOT_CONFIRMED",
@@ -253,12 +260,12 @@
    {
     "name": "proposal_survives_geometry",
     "passed": true,
-    "detail": "510 of 522 proposals were at a wrist and small enough, across 10 episode(s)"
+    "detail": "470 of 522 proposals were at a wrist and small enough, across 14 episode(s)"
    },
    {
     "name": "sam3_supports_or_cannot_exclude",
-    "passed": false,
-    "detail": "SAM 3 supported 0, named a phone 0, could not confirm 18, called equipment 32"
+    "passed": true,
+    "detail": "only 310 of 681 crops came back from SAM 3 (46%, floor 67%); not enough of this person's evidence was adjudicated to draw a conclusion either way"
    },
    {
     "name": "associated_with_this_person",
@@ -268,21 +275,21 @@
    {
     "name": "lasts_or_recurs",
     "passed": true,
-    "detail": "longest continuous handling 62.0s, 132.0s in total across 10 episode(s)"
+    "detail": "longest continuous handling 51.0s, 122.8s in total across 14 episode(s)"
    },
    {
     "name": "no_dominant_equipment_explanation",
     "passed": false,
-    "detail": "64% of adjudicated proposals at this seat were named workstation equipment"
+    "detail": "71% of adjudicated proposals at this seat were named workstation equipment"
    }
   ],
   "funnel": {
    "proposals": 522,
-   "gated": 510,
+   "gated": 470,
    "sam3_supported": 0,
-   "sam3_equipment": 32,
-   "sam3_not_confirmed": 18,
-   "sam3_unavailable": 478,
+   "sam3_equipment": 220,
+   "sam3_not_confirmed": 90,
+   "sam3_unavailable": 371,
    "sam3_phone": 0
   }
  },
@@ -295,8 +302,7 @@
    "TALKING_NOT_MEASURABLE",
    "OBJECT_PROPOSAL_PAPER",
    "OBJECT_AT_WRIST",
-   "OBJECT_NO_WRIST_RESOLVED",
-   "SAM3_UNAVAILABLE",
+   "SAM3_NOT_CONFIRMED",
    "ORIENTATION_CHANGE_FREQUENT"
   ],
   "modalities": [],
@@ -305,12 +311,12 @@
    {
     "name": "proposal_survives_geometry",
     "passed": true,
-    "detail": "4 of 5 proposals were at a wrist and small enough, across 2 episode(s)"
+    "detail": "1 of 5 proposals were at a wrist and small enough, across 1 episode(s)"
    },
    {
     "name": "sam3_supports_or_cannot_exclude",
-    "passed": true,
-    "detail": "not adjudicated by SAM 3"
+    "passed": false,
+    "detail": "SAM 3 supported 0 of 4 adjudication(s) (0%), named a phone 0, could not confirm 4, called equipment 0"
    },
    {
     "name": "associated_with_this_person",
@@ -320,21 +326,21 @@
    {
     "name": "lasts_or_recurs",
     "passed": false,
-    "detail": "longest continuous handling 1.2s, 1.5s in total across 2 episode(s)"
+    "detail": "longest continuous handling 0.2s, 0.2s in total across 1 episode(s)"
    },
    {
     "name": "no_dominant_equipment_explanation",
     "passed": true,
-    "detail": "no equipment adjudication available"
+    "detail": "0% of adjudicated proposals at this seat were named workstation equipment"
    }
   ],
   "funnel": {
    "proposals": 5,
-   "gated": 4,
+   "gated": 1,
    "sam3_supported": 0,
    "sam3_equipment": 0,
-   "sam3_not_confirmed": 0,
-   "sam3_unavailable": 4,
+   "sam3_not_confirmed": 4,
+   "sam3_unavailable": 0,
    "sam3_phone": 0
   }
  },
@@ -346,7 +352,6 @@
    "SEAT_UNCALIBRATED",
    "TALKING_NOT_MEASURABLE",
    "OBJECT_PROPOSAL_PAPER",
-   "OBJECT_TOO_LARGE",
    "SAM3_NOT_RUN",
    "OBJECT_STATIONARY_ON_DESK"
   ],
@@ -455,7 +460,6 @@
    "ORIENTATION_NOT_ASSESSABLE",
    "TALKING_NOT_MEASURABLE",
    "OBJECT_PROPOSAL_PAPER",
-   "OBJECT_TOO_LARGE",
    "SAM3_NOT_RUN",
    "OBJECT_STATIONARY_ON_DESK"
   ],

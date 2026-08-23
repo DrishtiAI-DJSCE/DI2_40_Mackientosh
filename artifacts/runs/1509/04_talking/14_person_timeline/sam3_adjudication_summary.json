@@ -1,18 +1,21 @@
 {
-  "workflow": "Roboflow workflow kawaljeets-workspace/general-segmentation-api-6 (SAM 3, sam3/sam3_final)",
+  "workflow": "Roboflow workflow kitretsu-gayitunde/sam-3 (SAM 3, sam3/sam3_final)",
   "prompt": "paper chit,mobile phone,keyboard,computer mouse,monitor,water bottle,hand",
   "min_overlap": 0.3,
-  "crops_adjudicated": 1774,
-  "api_calls": 1774,
-  "api_errors": 1682,
+  "crops_adjudicated": 633,
+  "api_calls": 633,
+  "api_errors": 0,
   "verdicts": {
-    "not_adjudicated": 1682,
-    "unsupported": 51,
-    "suppressed_keyboard": 39,
-    "suppressed_computer mouse": 16,
-    "unsupported_phone": 14,
-    "suppressed_water bottle": 5,
-    "suppressed_monitor": 5
+    "unsupported": 385,
+    "suppressed_computer mouse": 159,
+    "unsupported_phone": 252,
+    "suppressed_keyboard": 290,
+    "suppressed_monitor": 44,
+    "suppressed_water bottle": 54,
+    "phone_supported": 10,
+    "corroborated": 6,
+    "reclassified_as_phone": 4,
+    "phone_was_paper": 4
   },
-  "elapsed_s": 273.8
+  "elapsed_s": 119.3
 }

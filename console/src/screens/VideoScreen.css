@@ -34,6 +34,45 @@
   flex-wrap: wrap;
 }
 
+/* A stretch a human marked by hand. Full height and hatched, so it never
+   reads as one more machine lane stacked with the others. */
+.ribbon__human {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.ribbon__human.is-violation {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(200, 54, 54, 0.85) 0 5px,
+    rgba(200, 54, 54, 0.55) 5px 10px
+  );
+  border: 1px solid rgba(200, 54, 54, 0.95);
+}
+
+.ribbon__human.is-review {
+  background: rgba(214, 150, 60, 0.45);
+  border: 1px solid rgba(214, 150, 60, 0.8);
+}
+
+.ribbon__human.is-note {
+  background: rgba(140, 150, 160, 0.3);
+  border: 1px dashed rgba(140, 150, 160, 0.75);
+}
+
+/* The heatmap's scale, in the units it accumulated. */
+.video__heatnote {
+  margin: 0.4rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.55;
+  color: var(--slate);
+  max-width: 68ch;
+}
+
 .video__layers button,
 .video__people button,
 .video__focus header button {

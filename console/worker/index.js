@@ -177,6 +177,27 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
+    /* ---------------------------------------------------------- landing */
+
+    // The root is the landing page; the console lives under /app.
+    //
+    // Served by rewriting rather than redirecting, so the marketing page keeps
+    // the bare domain. Everything under /app falls through to the SPA, which
+    // Workers Assets serves through `not_found_handling: single-page-application`
+    // -- the console's own asset URLs are absolute (/assets/...), so it does not
+    // care what path it was reached at.
+    if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
+      const page = await env.ASSETS.fetch(new URL("/landing.html", url));
+      if (page.ok) {
+        // A fresh copy of the headers: the Response from ASSETS is immutable.
+        const headers = new Headers(page.headers);
+        headers.set("content-type", "text/html; charset=utf-8");
+        return new Response(page.body, { status: 200, headers });
+      }
+      // If the landing file is missing from the build, the console is a better
+      // answer than a 404 on the front door.
+    }
+
     /* ---------------------------------------------------------- uploads */
 
     // Handled before the shared router, for the same reason the Node server
@@ -264,7 +285,9 @@ export default {
         if (out?.text !== undefined) {
           return new Response(out.text, {
             status: out.status,
-            headers: { "content-type": out.type },
+            // Extra headers from the route, e.g. content-disposition on the
+            // CSV export. Spread after content-type so a route can override it.
+            headers: { "content-type": out.type, ...(out.headers ?? {}) },
           });
         }
         return Response.json(out.body, { status: out.status });

@@ -17,6 +17,28 @@ compatibility_date = "2026-08-01"
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# Workers Assets answers a matching path BEFORE the Worker script runs, and
+# with `not_found_handling = "single-page-application"` it answers *every*
+# unmatched path with index.html. Both of those have to be worked around here.
+#
+# `/` matched dist/index.html, so the console was served straight from Assets
+# and the Worker's landing-page branch never ran.
+#
+# The trap: naming only "/" in this list makes every OTHER path assets-first,
+# and the SPA fallback then swallows the dynamic routes. Measured: `/api/tree`
+# came back `200 text/html` with `<!doctype html>`, the console's fetch parsed
+# it as JSON and died with "e is not iterable", and `/media/*.mp4` returned
+# HTML so every video played as a black frame of length 00:00.0.
+#
+# So every path the Worker owns has to be listed, not just the new one.
+run_worker_first = [
+  "/",
+  "/index.html",
+  "/api/*",
+  "/media/*",
+  "/data/*",
+  "/crops/*",
+]
 
 # Decisions and the project hierarchy. D1 is SQLite, so worker/schema.d1.sql is
 # the local schema with the PRAGMAs removed.

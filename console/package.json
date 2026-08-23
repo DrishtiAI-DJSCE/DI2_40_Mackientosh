@@ -8,7 +8,7 @@
     "dev": "concurrently -n api,web -c cyan,magenta \"node server/index.js\" \"vite\"",
     "api": "node server/index.js",
     "web": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node tools/copy-landing.mjs",
     "start": "node server/index.js",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"

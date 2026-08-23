@@ -185,6 +185,17 @@ def classify_record(record) -> str:
     return CONTEXT_OBSERVATION
 
 
+#: Fraction of a track's SAM 3 calls that must have returned before the
+#: referee clause is allowed to say "no". Below it the clause abstains.
+#:
+#: Two thirds, not a half: the clause it guards is the only thing standing
+#: between a detector proposal and a person being routed to review, so it
+#: should speak only when it has seen most of the evidence. Set it lower and a
+#: run losing half its calls still produces confident negatives; set it at 1.0
+#: and a single dropped request silences the referee entirely.
+MIN_SAM3_COVERAGE = 0.67
+
+
 def _object_conditions(outcome, evidence, policy):
     """The five clauses of the review test for object evidence."""
     guard = policy.guard
@@ -206,17 +217,48 @@ def _object_conditions(outcome, evidence, policy):
         f"small enough, across {episodes} episode(s)"))
 
     supported_rate = (outcome.sam3_supported / adjudicated) if adjudicated else 0.0
+
+    # How much of what was sent to the referee actually came back.
+    #
+    # A *total* outage already abstained -- `adjudicated == 0` below. A partial
+    # one did not, and that is the hole this closes. Measured on 1509/04_talking:
+    # 1,682 of 1,774 calls failed (the workspace in the environment did not
+    # match the API key, so every request 404'd), leaving 50 answers for a track
+    # with 522 proposals. The clause judged that track on the surviving 9.6% and
+    # returned False, and three people with 62s, 22s and 15s of sustained
+    # handling were held out of review by a referee that never looked at ~90% of
+    # their evidence.
+    #
+    # OUTPUT_CONTRACT.md is explicit that a SAM 3 outage may never become a
+    # negative finding. Below the floor the clause abstains and says why, so the
+    # reason a person is not routed is "we could not check", not "we checked and
+    # it was fine".
+    attempted = adjudicated + outcome.sam3_unavailable
+    coverage = (adjudicated / attempted) if attempted else 0.0
+    too_thin = attempted > 0 and coverage < MIN_SAM3_COVERAGE
+
     verified = (outcome.sam3_phone > 0
                 or vd.corroborated_enough(outcome.sam3_supported, adjudicated,
                                           guard)
-                or adjudicated == 0)
+                or adjudicated == 0
+                or too_thin)
+
+    if too_thin:
+        detail = (f"only {adjudicated} of {attempted} crops came back from "
+                  f"SAM 3 ({coverage:.0%}, floor {MIN_SAM3_COVERAGE:.0%}); "
+                  f"not enough of this person's evidence was adjudicated to "
+                  f"draw a conclusion either way")
+    elif adjudicated:
+        detail = (f"SAM 3 supported {outcome.sam3_supported} of {adjudicated} "
+                  f"adjudication(s) ({supported_rate:.0%}), named a phone "
+                  f"{outcome.sam3_phone}, could not confirm "
+                  f"{outcome.sam3_not_confirmed}, called equipment "
+                  f"{outcome.sam3_equipment}")
+    else:
+        detail = "not adjudicated by SAM 3"
+
     outcome.conditions.append(Condition(
-        "sam3_supports_or_cannot_exclude", verified,
-        f"SAM 3 supported {outcome.sam3_supported} of {adjudicated} "
-        f"adjudication(s) ({supported_rate:.0%}), named a phone "
-        f"{outcome.sam3_phone}, could not confirm {outcome.sam3_not_confirmed}, "
-        f"called equipment {outcome.sam3_equipment}"
-        if adjudicated else "not adjudicated by SAM 3"))
+        "sam3_supports_or_cannot_exclude", verified, detail))
 
     if outcome.sam3_phone:
         associated = outcome.sam3_phone_at_wrist > 0
